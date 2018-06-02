@@ -33,7 +33,7 @@ module simulation
                              importance_gpt_cal, sensitivity_cal_gclutch, &
                              importance_gpt_fm
   use fissionmatrix,   only: count_source_for_fm
-                             
+
 
 
   implicit none
@@ -125,7 +125,7 @@ contains
     end do BATCH_LOOP
 
     call time_active % stop()
-    
+
     ! ==========================================================================
     ! END OF RUN WRAPUP
 
@@ -148,7 +148,7 @@ contains
 
   ! do j = 1, sensitivities(1) % imp_mesh_bins
   !   if (master) print *, sensitivities(1) % importance(j)
-  ! end do 
+  ! end do
 
   if (master) then
     do i = 1, sensitivities(1) % n_nuclide_bins
@@ -214,7 +214,7 @@ contains
        if (adjointmethod == 4 .AND. original) call tally_reset_history()
        if (adjointmethod == 5 .AND. clutch_first) call tally_reset_history()
        if (adjointmethod == 6 .AND. clutch_first) call tally_reset_history()
-    end if 
+    end if
 
   end subroutine initialize_history
 
@@ -251,7 +251,7 @@ contains
     if (sen_on) then
        if (adjointmethod == 1) then
           if (current_batch > n_inactive) call ifptally_reset_batch()
-       end if 
+       end if
        if (adjointmethod == 2) then
           if (current_batch <= n_inactive) call ifptally_reset_batch()
           if (current_batch > n_inactive) call clutch_reset_batch()
@@ -262,7 +262,7 @@ contains
        end if
        if (adjointmethod == 4) then
           if (current_batch > n_inactive) call ifptally_reset_batch()
-       end if   
+       end if
        if (adjointmethod == 5) then
           if (current_batch <= n_inactive) call ifptally_reset_batch()
           if (current_batch > n_inactive) call clutch_reset_batch()
@@ -271,7 +271,7 @@ contains
           if (current_batch > 10 .AND. current_batch <= n_inactive) call count_source_for_fm()
           if (current_batch > n_inactive) call clutch_reset_batch()
        end if
-    end if 
+    end if
 
 
     ! check CMFD initialize batch
@@ -406,6 +406,35 @@ contains
       call statepoint_batch % add(current_batch)
     end if
 
+    ! sensitivities calculation by combining tallies and neutron importances
+    if (sen_on) then
+       if (adjointmethod == 1) then
+          if (asymptotic) call sensitivity_cal()
+       end if
+       if (adjointmethod == 2) then
+          if (asymptotic) call importance_cal()
+          if (clutch_second) call sensitivity_cal_clutch()
+       end if
+       if (adjointmethod == 3) then
+          if (current_batch == n_inactive) call importance_cal_fm()
+          if (clutch_second) call sensitivity_cal_clutch()
+       end if
+       if (adjointmethod == 4) then
+          if (current_batch == n_inactive) call reaction_rates()
+          if (asymptotic) call sensitivity_gpt_cal()
+       end if
+       if (adjointmethod == 5) then
+          if (asymptotic) call importance_gpt_cal()
+          if (clutch_second) call sensitivity_cal_gclutch()
+       end if
+       if (adjointmethod == 6) then
+          if (current_batch == n_inactive) call reaction_rates()
+          if (current_batch == n_inactive) call importance_gpt_fm()
+          if (clutch_second) call sensitivity_cal_gclutch()
+       end if
+       if (current_batch == n_max_batches) call sen_statistics()
+    end if
+
     ! Write out state point if it's been specified for this batch
     if (statepoint_batch % contains(current_batch)) then
       call write_state_point()
@@ -423,35 +452,6 @@ contains
       ! batch in case no state point is written
       call calculate_combined_keff()
     end if
-
-    ! sensitivities calculation by combining tallies and neutron importances
-    if (sen_on) then
-       if (adjointmethod == 1) then
-          if (asymptotic) call sensitivity_cal()
-       end if 
-       if (adjointmethod == 2) then
-          if (asymptotic) call importance_cal()
-          if (clutch_second) call sensitivity_cal_clutch()
-       end if
-       if (adjointmethod == 3) then 
-          if (current_batch == n_inactive) call importance_cal_fm()
-          if (clutch_second) call sensitivity_cal_clutch()
-       end if
-       if (adjointmethod == 4) then 
-          if (current_batch == n_inactive) call reaction_rates()
-          if (asymptotic) call sensitivity_gpt_cal()
-       end if
-       if (adjointmethod == 5) then
-          if (asymptotic) call importance_gpt_cal()
-          if (clutch_second) call sensitivity_cal_gclutch()
-       end if
-       if (adjointmethod == 6) then 
-          if (current_batch == n_inactive) call reaction_rates()
-          if (current_batch == n_inactive) call importance_gpt_fm()
-          if (clutch_second) call sensitivity_cal_gclutch()
-       end if
-       if (current_batch == n_max_batches) call sen_statistics()
-    end if 
 
   end subroutine finalize_batch
 
