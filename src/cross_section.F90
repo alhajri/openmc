@@ -149,6 +149,7 @@ contains
     real(8) :: f      ! interp factor on nuclide energy grid
     real(8) :: kT     ! temperature in MeV
     real(8) :: sigT, sigA, sigF ! Intermediate multipole variables
+    real(8) :: dsigT(5,5000), dsigA(5,5000), dsigF(5,5000) ! Intermediate multipole derivative variables
 
     associate (nuc => nuclides(i_nuclide))
       ! Check to see if there is multipole data present at this energy
@@ -219,6 +220,22 @@ contains
         micro_xs(i_nuclide) % index_temp    = i_temp
         micro_xs(i_nuclide) % index_grid    = 0
         micro_xs(i_nuclide) % interp_factor = ZERO
+
+        ! Calculate the cross section derivatives
+        if (nuc % calculate_derivative) then
+          call multipole_deriv_eval(nuc % multipole, E, sqrtkT, dsigT, dsigA, dsigF)
+
+          nuc % sigT_derivative = dsigT
+          nuc % sigA_derivative = dsigA
+          nuc % sigElastic_derivative = dsigT-dsigA
+
+          if (nuc % fissionable) then
+            nuc % sigF_derivative = dsigF
+          else
+            nuc % sigF_derivative = ZERO
+          end if
+        end if
+
       else
         associate (grid => nuc % grid(i_temp), xs => nuc % sum_xs(i_temp))
           ! Determine the energy grid index using a logarithmic mapping to reduce
@@ -588,6 +605,139 @@ contains
     end if
 
   end function find_energy_index
+
+!===============================================================================
+! MULTIPOLE_DERIV_EVAL evaluates the derivative of the cross
+! sections in the resolved resonance regions with respect to the multipole
+! parameters
+!===============================================================================
+
+  subroutine multipole_deriv_eval(multipole, Emev, sqrtkT_, sigT, sigA, sigF)
+    type(MultipoleArray), intent(in) :: multipole ! The windowed multipole
+                                                  !  object to process.
+    real(8), intent(in)              :: Emev      ! The energy at which to
+                                                  !  evaluate the cross section
+                                                  !  in MeV
+    real(8), intent(in)              :: sqrtkT_   ! The temperature in the form
+                                                  !  sqrt(kT (in MeV)), at which
+                                                  !  to evaluate the XS.
+    real(8), intent(out)             :: sigT(5,5000)       ! Total cross section
+    real(8), intent(out)             :: sigA(5,5000)       ! Absorption cross section
+    real(8), intent(out)             :: sigF(5,5000)       ! Fission cross section
+    complex(8) :: psi_chi  ! The value of the psi-chi function for the
+                           !  asymptotic form
+    complex(8) :: c_temp   ! complex temporary variable
+    complex(8) :: w_val    ! The faddeeva function evaluated at Z
+    complex(8) :: Z        ! sqrt(atomic weight ratio / kT) * (sqrt(E) - pole)
+    complex(8) :: sigT_factor(multipole % num_l)
+    real(8) :: broadened_polynomials(multipole % fit_order + 1)
+    real(8) :: sqrtE       ! sqrt(E), eV
+    real(8) :: invE        ! 1/E, eV
+    real(8) :: dopp        ! sqrt(atomic weight ratio / kT) = 1 / (2 sqrt(xi))
+    real(8) :: temp        ! real temporary value
+    real(8) :: E           ! energy, eV
+    real(8) :: sqrtkT      ! sqrt(kT (in eV))
+    integer :: i_pole      ! index of pole
+    integer :: i_poly      ! index of curvefit
+    integer :: i_window    ! index of window
+    integer :: startw      ! window start pointer (for poles)
+    integer :: endw        ! window end pointer
+
+    ! ==========================================================================
+    ! Bookkeeping
+
+    ! Convert to eV.
+    E = Emev * 1.0e6_8
+    sqrtkT = sqrtkT_ * 1.0e3_8
+
+    ! Define some frequently used variables.
+    sqrtE = sqrt(E)
+    invE = ONE / E
+    dopp = multipole % sqrtAWR / sqrtkT
+
+    ! Locate us.
+    i_window = floor((sqrtE - sqrt(multipole % start_E)) / multipole % spacing &
+         + ONE)
+    startw = multipole % w_start(i_window)
+    endw = multipole % w_end(i_window)
+
+    ! Fill in factors.
+    !if (startw <= endw) then
+    !  call compute_sigT_factor(multipole, sqrtE, sigT_factor)
+    !end if
+
+    ! Initialize the ouptut cross section derivatives.
+    sigT = ZERO
+    sigA = ZERO
+    sigF = ZERO
+
+    ! ==========================================================================
+    ! Evaluate the derivatives of the poles in this window.
+
+    if (sqrtkT == ZERO) then
+      ! If at 0K, use asymptotic form.
+      do i_pole = startw, endw
+        if (multipole % formalism == FORM_MLBW) then
+          ! Total cross section derivative
+          sigT(MP_EA, i_pole) = 1
+          sigT(MLBW_RT, i_pole) = 1
+          sigT(MLBW_RX, i_pole) = 1
+
+          ! Absorption cross section derivative
+          sigA(MP_EA, i_pole) = 1
+          sigA(MLBW_RA, i_pole) = 1
+
+          ! Absorption cross section derivative
+          sigF(MP_EA, i_pole) = 1
+          sigF(MLBW_RF, i_pole) = 1
+        else if (multipole % formalism == FORM_RM) then
+          ! Total cross section derivative
+          sigT(MP_EA, i_pole) = 1
+          sigT(RM_RT, i_pole) = 1
+
+          ! Absorption cross section derivative
+          sigA(MP_EA, i_pole) = 1
+          sigA(RM_RA, i_pole) = 1
+
+          ! Absorption cross section derivative
+          sigF(MP_EA, i_pole) = 1
+          sigF(RM_RF, i_pole) = 1
+        end if
+      end do
+    else
+      ! At temperature, use Faddeeva function-based form.
+      if (endw >= startw) then
+        do i_pole = startw, endw
+          if (multipole % formalism == FORM_MLBW) then
+            ! Total cross section derivative
+            sigT(MP_EA, i_pole) = 1
+            sigT(MLBW_RT, i_pole) = 1
+            sigT(MLBW_RX, i_pole) = 1
+
+            ! Absorption cross section derivative
+            sigA(MP_EA, i_pole) = 1
+            sigA(MLBW_RA, i_pole) = 1
+
+            ! Absorption cross section derivative
+            sigF(MP_EA, i_pole) = 1
+            sigF(MLBW_RF, i_pole) = 1
+          else if (multipole % formalism == FORM_RM) then
+            ! Total cross section derivative
+            sigT(MP_EA, i_pole) = 1
+            sigT(RM_RT, i_pole) = 1
+
+            ! Absorption cross section derivative
+            sigA(MP_EA, i_pole) = 1
+            sigA(RM_RA, i_pole) = 1
+
+            ! Absorption cross section derivative
+            sigF(MP_EA, i_pole) = 1
+            sigF(RM_RF, i_pole) = 1
+          end if
+        end do
+      end if
+    end if
+  end subroutine multipole_deriv_eval
 
 !===============================================================================
 ! MULTIPOLE_EVAL evaluates the windowed multipole equations for cross

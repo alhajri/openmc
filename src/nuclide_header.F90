@@ -92,6 +92,15 @@ module nuclide_header
     logical                       :: mp_present = .false.
     type(MultipoleArray), pointer :: multipole => null()
 
+    ! Derivative data
+    logical      :: calculate_derivative = .true. ! figure out how to
+                                                  ! turn this off later
+    real(8)      :: sigT_derivative(5,5000)       ! total cross section derivative
+    real(8)      :: sigA_derivative(5,5000)       ! absorption cross derivative section
+    real(8)      :: sigF_derivative(5,5000)       ! fission cross derivative section
+    real(8)      :: sigElastic_derivative(5,5000) ! elastic cross derivative section
+
+
     ! Reactions
     type(Reaction), allocatable :: reactions(:)
     type(DictIntInt) :: reaction_index ! map MT values to index in reactions
@@ -516,8 +525,8 @@ module nuclide_header
 
           ! Perturbation
           !if (this % name == "Pu239" .AND. rx % MT == ELASTIC) rx % xs(t) % value = rx % xs(t) % value * 1.01
-          !if (this % name == "Pu239" .AND. rx % MT == N_FISSION) rx % xs(t) % value = rx % xs(t) % value * 1.01    
-          !if (this % name == "Pu239" .AND. rx % MT == N_GAMMA) rx % xs(t) % value = rx % xs(t) % value * 1.01               
+          !if (this % name == "Pu239" .AND. rx % MT == N_FISSION) rx % xs(t) % value = rx % xs(t) % value * 1.01
+          !if (this % name == "Pu239" .AND. rx % MT == N_GAMMA) rx % xs(t) % value = rx % xs(t) % value * 1.01
 
           ! Copy elastic
           if (rx % MT == ELASTIC) this % sum_xs(t) % elastic(:) = rx % xs(t) % value
@@ -608,7 +617,7 @@ module nuclide_header
           else
               this % sum_xs(t) % nu_fission(i) = this % nu(this % grid(t) % energy(i), &
               EMISSION_TOTAL) * this % sum_xs(t) % fission(i)
-          end if 
+          end if
         end do
       else
         this % sum_xs(t) % nu_fission(:) = ZERO
