@@ -404,6 +404,9 @@ contains
              // trim(to_str(t % id)))
         call write_dataset(sens_group, "method", t % method)
         call write_dataset(sens_group, "name", t % name)
+        call write_dataset(sens_group, "nuclides", t % nuclide_bins)
+        call write_dataset(sens_group, "MT", t % score_bins)
+        call write_dataset(sens_group, "Energy Structure", t % energystructure)
         call write_dataset(sens_group, "results", t % results)
         call close_group(sens_group)
       end do SENSITIVITY_RESULTS
