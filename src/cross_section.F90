@@ -153,6 +153,14 @@ contains
 
     associate (nuc => nuclides(i_nuclide))
       ! Check to see if there is multipole data present at this energy
+
+      ! Zero out the derivatives, this is so that if we sample an energy outside the
+      ! RRR, the derivative is set to ZERO.
+      nuc % sigT_derivative = ZERO
+      nuc % sigA_derivative = ZERO
+      nuc % sigElastic_derivative = ZERO
+      nuc % sigF_derivative = ZERO
+      
       use_mp = .false.
       if (nuc % mp_present) then
         if (E >= nuc % multipole % start_E/1.0e6_8 .and. &
@@ -225,6 +233,7 @@ contains
         if (nuc % calculate_derivative) then
           call multipole_deriv_eval(nuc % multipole, E, sqrtkT, dsigT, dsigA, dsigF)
 
+          ! These values may need to be normalized by the cross section...
           nuc % sigT_derivative = dsigT
           nuc % sigA_derivative = dsigA
           nuc % sigElastic_derivative = dsigT-dsigA
@@ -649,6 +658,8 @@ contains
     ! Convert to eV.
     E = Emev * 1.0e6_8
     sqrtkT = sqrtkT_ * 1.0e3_8
+
+    !print *, "mulipole derivative calculated at E = ", E
 
     ! Define some frequently used variables.
     sqrtE = sqrt(E)

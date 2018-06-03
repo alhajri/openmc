@@ -408,6 +408,11 @@ contains
         call write_dataset(sens_group, "MT", t % score_bins)
         call write_dataset(sens_group, "Energy Structure", t % energystructure)
         call write_dataset(sens_group, "results", t % results)
+        MP_DATA: do j = 1, t % n_nuclide_bins
+          ! print the Multipole data for the nuclide:
+          call write_dataset(sens_group, trim(nuclides(t % nuclide_bins(j)) % name) &
+              // " Multipole Parameters",nuclides(t % nuclide_bins(j)) % multipole % data)
+        end do MP_DATA
         call close_group(sens_group)
       end do SENSITIVITY_RESULTS
       call close_group(sensitivity_group)
