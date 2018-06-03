@@ -93,7 +93,7 @@ module nuclide_header
     type(MultipoleArray), pointer :: multipole => null()
 
     ! Derivative data
-    logical      :: calculate_derivative = .true. ! figure out how to
+    logical      :: calculate_derivative = .false. ! figure out how to
                                                   ! turn this off later
     real(8)      :: sigT_derivative(5,5000)       ! total cross section derivative
     real(8)      :: sigA_derivative(5,5000)       ! absorption cross derivative section

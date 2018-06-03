@@ -154,13 +154,6 @@ contains
     associate (nuc => nuclides(i_nuclide))
       ! Check to see if there is multipole data present at this energy
 
-      ! Zero out the derivatives, this is so that if we sample an energy outside the
-      ! RRR, the derivative is set to ZERO.
-      nuc % sigT_derivative = ZERO
-      nuc % sigA_derivative = ZERO
-      nuc % sigElastic_derivative = ZERO
-      nuc % sigF_derivative = ZERO
-      
       use_mp = .false.
       if (nuc % mp_present) then
         if (E >= nuc % multipole % start_E/1.0e6_8 .and. &
@@ -173,6 +166,16 @@ contains
           kT = sqrtkT**2
 
           i_temp = minloc(abs(nuclides(i_nuclide) % kTs - kT), dim=1)
+
+          if (nuc % calculate_derivative) then
+            ! Zero out the derivatives, this is so that if we sample an energy outside the
+            ! RRR, the derivative is set to ZERO.
+            nuc % sigT_derivative = ZERO
+            nuc % sigA_derivative = ZERO
+            nuc % sigElastic_derivative = ZERO
+            nuc % sigF_derivative = ZERO
+          end if
+          
         end if
       else
         kT = sqrtkT**2
