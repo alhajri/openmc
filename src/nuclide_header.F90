@@ -28,6 +28,30 @@ module nuclide_header
 
   implicit none
 
+
+  ! Indecies for the derivatives
+  ! Constants that determine which value to access
+  integer, parameter :: MP_EA_RE = 1, &    ! Pole real
+                        MP_EA_IM = 2       ! Pole imaginary
+
+  ! Reich-Moore indices
+  integer, parameter :: RM_RT_RE = 3, &    ! Residue total real
+                        RM_RT_IM = 4, &    ! Residue total imaginary
+                        RM_RA_RE = 5, &    ! Residue absorption real
+                        RM_RA_IM = 6, &    ! Residue absorption imaginary
+                        RM_RF_RE = 7, &    ! Residue fission real
+                        RM_RF_IM = 8       ! Residue fission imaginary
+
+  ! Multi-level Breit Wigner indices
+  integer, parameter :: MLBW_RT_RE = 3, &  ! Residue total real
+                        MLBW_RT_IM = 4, &  ! Residue total imaginary
+                        MLBW_RX_RE = 5, &  ! Residue compettitive real
+                        MLBW_RX_IM = 6, &  ! Residue competitive imaginary
+                        MLBW_RA_RE = 7, &  ! Residue absorption real
+                        MLBW_RA_IM = 8, &  ! Residue absorption imaginary
+                        MLBW_RF_RE = 9, &  ! Residue fission real
+                        MLBW_RF_IM = 10     ! Residue fission imaginary
+
 !===============================================================================
 ! Nuclide contains the base nuclidic data for a nuclide described as needed
 ! for continuous-energy neutron transport.
