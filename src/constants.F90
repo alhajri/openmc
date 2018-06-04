@@ -57,6 +57,10 @@ module constants
   integer, parameter :: EXTSRC_REJECT_THRESHOLD = 10000
   real(8), parameter :: EXTSRC_REJECT_FRACTION = 0.05
 
+  ! Adjustable sizes for the multipole parameter derivatives
+  integer, parameter :: MAX_POLES  = 4000
+  integer, parameter :: MAX_PARAMS = 10
+
   ! ============================================================================
   ! PHYSICAL CONSTANTS
 
@@ -326,7 +330,7 @@ module constants
        SCORE_FISS_Q_PROMPT      = -22, & ! prompt fission Q-value
        SCORE_FISS_Q_RECOV       = -23, & ! recoverable fission Q-value
        SCORE_DECAY_RATE         = -24    ! delayed neutron precursor decay rate
-       
+
 
   ! Maximum scattering order supported
   integer, parameter :: MAX_ANG_ORDER = 10

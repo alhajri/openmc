@@ -93,12 +93,12 @@ module nuclide_header
     type(MultipoleArray), pointer :: multipole => null()
 
     ! Derivative data
-    logical      :: calculate_derivative = .false. ! figure out how to
-                                                  ! turn this off later
-    real(8)      :: sigT_derivative(5,5000)       ! total cross section derivative
-    real(8)      :: sigA_derivative(5,5000)       ! absorption cross derivative section
-    real(8)      :: sigF_derivative(5,5000)       ! fission cross derivative section
-    real(8)      :: sigElastic_derivative(5,5000) ! elastic cross derivative section
+    logical      :: calculate_derivative = .false. ! flag to calculate derivative
+    integer      :: RRR = 0                       ! Are you in the RRR
+    real(8)      :: sigT_derivative(MAX_PARAMS,MAX_POLES)       ! total cross section derivative
+    real(8)      :: sigA_derivative(MAX_PARAMS,MAX_POLES)       ! absorption cross derivative section
+    real(8)      :: sigF_derivative(MAX_PARAMS,MAX_POLES)       ! fission cross derivative section
+    real(8)      :: sigElastic_derivative(MAX_PARAMS,MAX_POLES) ! elastic cross derivative section
 
 
     ! Reactions

@@ -23,7 +23,7 @@ module sensitivity
 contains
 
 !===============================================================================
-! SCORE_TRACKLENGTH_SENSITIVITY 
+! SCORE_TRACKLENGTH_SENSITIVITY
 !===============================================================================
 
   subroutine score_tracklength_sensitivity(p, distance)
@@ -49,7 +49,7 @@ contains
 
     atom_density = ZERO
 
-    ! A loop over all sensitivities is necessary 
+    ! A loop over all sensitivities is necessary
 
     SENSITIVITY_LOOP: do i = 1, n_sens
       ! Get index of tally and pointer to tally
@@ -73,7 +73,7 @@ contains
 
         NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins
             ! Get index of nuclide in nuclides array
-            i_nuclide = t % nuclide_bins(k)              
+            i_nuclide = t % nuclide_bins(k)
 
             if (i_nuclide > 0) then
               if (p % material /= MATERIAL_VOID) then
@@ -111,7 +111,7 @@ contains
         call get_next_bin_sen(t, p, &
            next_bin_mesh, next_bin_mesh, mesh_weight)
         if (next_bin_mesh == NO_BIN_FOUND) exit MESH_LOOP
-        
+
       end do MESH_LOOP
 
     end do SENSITIVITY_LOOP
@@ -120,7 +120,7 @@ contains
 
 
 !===============================================================================
-! SCORE_SCATTERING_SENSITIVITY 
+! SCORE_SCATTERING_SENSITIVITY
 !===============================================================================
 
   subroutine score_scattering_sensitivity(p, i_nuclide, mt_number)
@@ -144,8 +144,10 @@ contains
     type(Material),    pointer :: mat
     type(RegularMesh), pointer :: m
 
+    real(8) :: poleScore(MAX_PARAMS,MAX_POLES)    ! score for the poles
 
-    ! A loop over all sensitivities is necessary 
+
+    ! A loop over all sensitivities is necessary
 
     SENSITIVITY_LOOP: do i = 1, n_sens
 
@@ -154,7 +156,7 @@ contains
       next_bin_energy = 0
       next_bin_nuclide = 0
       next_bin_score = 0
-    
+
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
 
@@ -165,7 +167,7 @@ contains
          call fatal_error("Could not find mesh " // trim(to_str(t % meshid)) &
            // " specified on sensitivity " // trim(to_str(t % id)))
       end if
- 
+
       ! ======================================================================
       ! Mesh logic
       call get_mesh_bin(m, p % coord(1) % xyz, next_bin_mesh)
@@ -178,20 +180,20 @@ contains
       if (next_bin_energy == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
-      ! Nuclide logic,  to check if the collision nuclide is in the 
+      ! Nuclide logic,  to check if the collision nuclide is in the
       ! sensitivity tally list
-      NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins   
+      NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins
 
          ! Get index of nuclide in nuclides array
-         i_nuclide_sen = t % nuclide_bins(k)          
-             
+         i_nuclide_sen = t % nuclide_bins(k)
+
          ! the collision nuclide is in the sensitivity tally list
-         if (i_nuclide_sen == i_nuclide) then     
-  
+         if (i_nuclide_sen == i_nuclide) then
+
            next_bin_nuclide = k
-  
+
            exit NUCLIDE_BIN_LOOP
-  
+
          end if
 
        end do NUCLIDE_BIN_LOOP
@@ -199,9 +201,9 @@ contains
        if (next_bin_nuclide == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
-      ! Score logic,  to check if the score is in the 
+      ! Score logic,  to check if the score is in the
       ! sensitivity tally list
-       SCORE_BIN_LOOP: do j = 1, t % n_score_bins  
+       SCORE_BIN_LOOP: do j = 1, t % n_score_bins
 
           ! determine what type of score bin
           i_score_sen = t % score_bins(j)
@@ -212,9 +214,9 @@ contains
              next_bin_score = j
 
              exit SCORE_BIN_LOOP
- 
+
            end if
- 
+
        end do SCORE_BIN_LOOP
 
        if (next_bin_score == 0) cycle SENSITIVITY_LOOP
@@ -223,14 +225,52 @@ contains
            next_bin_mesh, next_bin_energy) = &
        t % cumtally(next_bin_nuclide, next_bin_score, &
            next_bin_mesh, next_bin_energy) + 1
-       
+
+      ! Determine which derivative to use:
+      associate (nuc => nuclides(i_nuclide))
+
+        select case(mt_number)
+        case (SCORE_SCATTER)
+          poleScore = nuc % RRR * (nuc % sigT_derivative &
+                    - nuc % sigA_derivative)
+
+        case (ELASTIC)
+          poleScore = nuc % RRR * nuc % sigElastic_derivative
+
+        case (SCORE_ABSORPTION)
+          poleScore = nuc % RRR * nuc % sigA_derivative
+
+        case (SCORE_FISSION)
+          poleScore = nuc % RRR * nuc % sigF_derivative
+
+        case (SCORE_CAPTURE)
+          poleScore = nuc % RRR * (nuc % sigA_derivative &
+            - nuc % sigF_derivative)
+
+        case (SCORE_TOTAL)
+          poleScore = nuc % RRR * nuc % sigT_derivative
+
+        case (FISSION_CHI)
+          poleScore = ZERO
+
+        case default
+          poleScore = ZERO
+
+        end select
+      end associate
+
+      t % poleCumtally(next_bin_nuclide, next_bin_score, &
+          next_bin_mesh, next_bin_energy, :, :) = &
+      t % poleCumtally(next_bin_nuclide, next_bin_score, &
+          next_bin_mesh, next_bin_energy, :, :) + poleScore
+
     end do SENSITIVITY_LOOP
 
   end subroutine score_scattering_sensitivity
 
 
 !===============================================================================
-! SCORE_FISSION_SENSITIVITY 
+! SCORE_FISSION_SENSITIVITY
 !===============================================================================
 
   subroutine score_fission_sensitivity(p, b, i_nuclide, mt_number)
@@ -257,8 +297,10 @@ contains
     type(Material),    pointer :: mat
     type(RegularMesh), pointer :: m
 
+    real(8)  :: poleScore(MAX_PARAMS,MAX_POLES)  ! the score for the poles
 
-    ! A loop over all sensitivities is necessary 
+
+    ! A loop over all sensitivities is necessary
 
     SENSITIVITY_LOOP: do i = 1, n_sens
 
@@ -267,7 +309,7 @@ contains
       next_bin_energy = 0
       next_bin_nuclide = 0
       next_bin_score = 0
-    
+
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
 
@@ -278,7 +320,7 @@ contains
          call fatal_error("Could not find mesh " // trim(to_str(t % meshid)) &
            // " specified on sensitivity " // trim(to_str(t % id)))
       end if
- 
+
       ! ======================================================================
       ! Mesh logic
       call get_mesh_bin(m, p % coord(1) % xyz, next_bin_mesh)
@@ -289,27 +331,27 @@ contains
       if (mt_number == FISSION_CHI) then
          next_bin_energy = binary_search(t % energystructure, & ! get energybin
                            t % n_energy_bins + 1, b % E)
-      else 
+      else
          next_bin_energy = binary_search(t % energystructure, & ! get energybin
                            t % n_energy_bins + 1, p % last_E)
       end if
       if (next_bin_energy == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
-      ! Nuclide logic,  to check if the collision nuclide is in the 
+      ! Nuclide logic,  to check if the collision nuclide is in the
       ! sensitivity tally list
-      NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins   
+      NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins
 
          ! Get index of nuclide in nuclides array
-         i_nuclide_sen = t % nuclide_bins(k)          
-             
+         i_nuclide_sen = t % nuclide_bins(k)
+
          ! the collision nuclide is in the sensitivity tally list
-         if (i_nuclide_sen == i_nuclide) then     
-  
+         if (i_nuclide_sen == i_nuclide) then
+
            next_bin_nuclide = k
-  
+
            exit NUCLIDE_BIN_LOOP
-  
+
          end if
 
        end do NUCLIDE_BIN_LOOP
@@ -317,9 +359,9 @@ contains
        if (next_bin_nuclide == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
-      ! Score logic,  to check if the score is in the 
+      ! Score logic,  to check if the score is in the
       ! sensitivity tally list
-       SCORE_BIN_LOOP: do j = 1, t % n_score_bins  
+       SCORE_BIN_LOOP: do j = 1, t % n_score_bins
 
           ! determine what type of score bin
           i_score_sen = t % score_bins(j)
@@ -330,9 +372,9 @@ contains
              next_bin_score = j
 
              exit SCORE_BIN_LOOP
- 
+
            end if
- 
+
        end do SCORE_BIN_LOOP
 
        if (next_bin_score == 0) cycle SENSITIVITY_LOOP
@@ -341,6 +383,45 @@ contains
            next_bin_mesh, next_bin_energy) = &
        t % neutrontally(progenitornum, next_bin_nuclide, next_bin_score, &
            next_bin_mesh, next_bin_energy) + 1
+
+      ! Determine which derivative to use:
+      associate (nuc => nuclides(i_nuclide))
+
+        select case(mt_number)
+
+        case (SCORE_TOTAL)
+          poleScore = nuc % RRR * nuc % sigT_derivative
+
+        case (SCORE_SCATTER)
+          poleScore = nuc % RRR * (nuc % sigT_derivative &
+                    - nuc % sigA_derivative)
+
+        case (SCORE_ABSORPTION)
+          poleScore = nuc % RRR * nuc % sigA_derivative
+
+        case (SCORE_FISSION)
+          poleScore = nuc % RRR * nuc % sigF_derivative
+
+        case (SCORE_CAPTURE)
+          poleScore = nuc % RRR * (nuc % sigA_derivative &
+                    - nuc % sigF_derivative)
+
+        case (ELASTIC)
+          poleScore = nuc % RRR * nuc % sigElastic_derivative
+
+        case (FISSION_CHI)
+          poleScore = ZERO
+
+        case default
+          poleScore = ZERO
+
+        end select
+      end associate
+
+       t % poleNeutrontally(progenitornum, next_bin_nuclide, next_bin_score, &
+           next_bin_mesh, next_bin_energy, :, :) = &
+       t % poleNeutrontally(progenitornum, next_bin_nuclide, next_bin_score, &
+           next_bin_mesh, next_bin_energy, :, :) + poleScore
 
     end do SENSITIVITY_LOOP
 
@@ -356,7 +437,7 @@ contains
     ! progenitor is a global parameter
 
     type(Particle), intent(in) :: p
-   
+
     integer :: next_bin_mesh        ! index for next mesh
     integer :: i_mesh
     integer :: i
@@ -364,13 +445,13 @@ contains
     type(RegularMesh), pointer :: m
 
 
-    ! A loop over all sensitivities is necessary 
+    ! A loop over all sensitivities is necessary
 
     SENSITIVITY_LOOP: do i = 1, n_sens
 
       ! clear the information of last sensitivity
       next_bin_mesh = NO_BIN_FOUND
-    
+
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
 
@@ -381,7 +462,7 @@ contains
          call fatal_error("Could not find mesh " // trim(to_str(t % impmeshid)) &
            // " specified on sensitivity " // trim(to_str(t % id)))
       end if
- 
+
       ! ======================================================================
       ! Mesh logic
       call get_mesh_bin(m, p % coord(1) % xyz, next_bin_mesh)
@@ -406,13 +487,13 @@ contains
 
     integer :: i
 
-    ! A loop over all sensitivities is necessary 
+    ! A loop over all sensitivities is necessary
     SENSITIVITY_LOOP: do i = 1, n_sens
        ! Get index of tally and pointer to tally
        t => sensitivities(i)
        t % neutronfission(progenitornum) = t % neutronfission(progenitornum) + 1
     end do SENSITIVITY_LOOP
- 
+
   end subroutine score_denom_sensitivity
 
 !===============================================================================
@@ -428,12 +509,12 @@ contains
     type(SensitivityObject), pointer :: t
     type(RegularMesh), pointer :: m
 
-    ! A loop over all sensitivities is necessary 
+    ! A loop over all sensitivities is necessary
     SENSITIVITY_LOOP: do i = 1, n_sens
 
        ! clear the information of last sensitivity
       next_bin_mesh = NO_BIN_FOUND
-    
+
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
 
@@ -444,7 +525,7 @@ contains
          call fatal_error("Could not find mesh " // trim(to_str(t % impmeshid)) &
            // " specified on sensitivity " // trim(to_str(t % id)))
       end if
- 
+
       ! ======================================================================
       ! Mesh logic
       call get_mesh_bin(m, p % coord(1) % xyz, next_bin_mesh)
@@ -452,11 +533,11 @@ contains
 
       t % neutronfission(next_bin_mesh) = t % neutronfission(next_bin_mesh) + 1
     end do SENSITIVITY_LOOP
- 
+
   end subroutine score_fission_sites
 
 !===============================================================================
-! SCORE_NEUTRON_VALUE calculates the number of progenies for a given ifp_id 
+! SCORE_NEUTRON_VALUE calculates the number of progenies for a given ifp_id
 !===============================================================================
 
   subroutine score_neutron_value(p, nu_born)
@@ -467,13 +548,13 @@ contains
     type(SensitivityObject), pointer :: t
 
     integer :: i
-    ! A loop over all sensitivities is necessary 
+    ! A loop over all sensitivities is necessary
     SENSITIVITY_LOOP: do i = 1, n_sens
        ! Get index of tally and pointer to tally
        t => sensitivities(i)
        t % neutronvalue(p % ifp_id) = t % neutronvalue(p % ifp_id) + nu_born
     end do SENSITIVITY_LOOP
- 
+
   end subroutine score_neutron_value
 
 
@@ -488,19 +569,20 @@ contains
 
      progenitornum = progenitornum + 1 ! number of progenitor has been added
 
-     ! A loop over all sensitivities is necessary 
+     ! A loop over all sensitivities is necessary
      SENSITIVITY_LOOP: do i = 1, n_sens
        ! Get index of tally and pointer to tally
        t => sensitivities(i)
        if (t % method == 1) then
           t % neutrontally(progenitornum,:,:,:,:) = t % cumtally(:,:,:,:)
-       end if 
+          t % poleNeutrontally(progenitornum,:,:,:,:,:,:) = t % poleCumtally(:,:,:,:,:,:)
+       end if
      end do SENSITIVITY_LOOP
 
   end subroutine add_branch_sensitivity
 
 !===============================================================================
-! TALLY_CUMTOSECONDARY transfer the tally information from cumulative tally to 
+! TALLY_CUMTOSECONDARY transfer the tally information from cumulative tally to
 ! secondary array.
 !===============================================================================
 
@@ -518,7 +600,7 @@ contains
   end subroutine tally_cumtosecondary
 
 !===============================================================================
-! TALLY_SECONDARYTOCUM transfer the tally information from secondary array to 
+! TALLY_SECONDARYTOCUM transfer the tally information from secondary array to
 ! cumulative tally.
 !===============================================================================
 
@@ -537,7 +619,7 @@ contains
 
 !===============================================================================
 ! IFPTALLY_RESET_BATCH reset the neutrontally variables into zero at the beginning
-! and the end of each block calculation 
+! and the end of each block calculation
 !===============================================================================
 
   subroutine ifptally_reset_batch()
@@ -554,26 +636,26 @@ contains
      if (adjointmethod == 2) n_discard = 0
      if (adjointmethod == 5) n_discard = 0!100
 
-     if (mod(current_batch - n_discard, ifp_block) == 1) then 
+     if (mod(current_batch - n_discard, ifp_block) == 1) then
         original = .true.          !  original generation
         progenitornum = 3 * work_index(rank) ! the initial index
-        ! A loop over all sensitivities is necessary 
+        ! A loop over all sensitivities is necessary
         SENSITIVITY_LOOP: do i = 1, n_sens
            ! Get index of tally and pointer to tally
            t => sensitivities(i)
            t % neutrontally   = 0
            t % neutronvalue   = 0
-           if (adjointmethod /= 4) then 
+           if (adjointmethod /= 4) then
               t % neutronfission = 0
            end if
            t % results(3,:,:,:,:) = 0 ! used as direct term in gpt ifp
            if (adjointmethod == 5) then ! calculate importance
               t % gptvaluenumer  = 0
               t % gptvaluedenom  = 0
-           end if 
+           end if
         end do SENSITIVITY_LOOP
       end if
-      if (mod(current_batch - n_discard, ifp_block) == 0) then 
+      if (mod(current_batch - n_discard, ifp_block) == 0) then
         asymptotic = .true.          !  original generation
       end if
 
@@ -593,27 +675,27 @@ contains
      original = .false.
      asymptotic = .false.
      clutch_first    = .false.   ! first batch in CLUTCH calculation
-     clutch_second   = .false.   ! second batch in CLUTCH calculation 
+     clutch_second   = .false.   ! second batch in CLUTCH calculation
      fismatrix_on = .false.      ! turn off the fission matrix calculation
 
-     if (mod(current_batch - n_inactive, 2) == 1) then 
+     if (mod(current_batch - n_inactive, 2) == 1) then
         clutch_first = .true.          !  first batch in one CLUTCH block
-        ! A loop over all sensitivities is necessary 
+        ! A loop over all sensitivities is necessary
         SENSITIVITY_LOOP: do i = 1, n_sens
            ! Get index of tally and pointer to tally
            t => sensitivities(i)
-           t % clutchsen   = 0   ! every process has an array 
+           t % clutchsen   = 0   ! every process has an array
            t % denom = 0   ! every process has one value
         end do SENSITIVITY_LOOP
      end if
-     if (mod(current_batch - n_inactive, 2) == 0) then 
+     if (mod(current_batch - n_inactive, 2) == 0) then
         clutch_second = .true.         !  second batch in one CLUTCH block
      end if
 
   end subroutine clutch_reset_batch
 
 !===============================================================================
-! TALLY_RESET_HISTORY reset the neutrontally variables into zero at the 
+! TALLY_RESET_HISTORY reset the neutrontally variables into zero at the
 ! beginning of each particle history
 !===============================================================================
 
@@ -622,7 +704,7 @@ contains
      type(SensitivityObject), pointer :: t
      integer :: i
 
-     ! A loop over all sensitivities is necessary 
+     ! A loop over all sensitivities is necessary
      SENSITIVITY_LOOP: do i = 1, n_sens
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
@@ -641,7 +723,7 @@ contains
 ! (focused on IFP method)
 !===============================================================================
   subroutine collect_ifpcal()
- 
+
       type(SensitivityObject), pointer :: t
       integer :: i         ! sensitivity loop index
       integer :: n1        ! total size of count variable neutrontally
@@ -649,7 +731,7 @@ contains
       integer :: n3        ! total size of count variable neutronvalue
       real(8) :: dummy     ! temporary receive buffer for non-root reductions
 
-      ! A loop over all sensitivities is necessary 
+      ! A loop over all sensitivities is necessary
       SENSITIVITY_LOOP: do i = 1, n_sens
          ! Get index of tally and pointer to tally
          t => sensitivities(i)
@@ -660,7 +742,7 @@ contains
             n3 = 3 * n_particles
          end if
          if (t % method == 2) then
-            n1 = 3 * n_particles * t % imp_mesh_bins 
+            n1 = 3 * n_particles * t % imp_mesh_bins
             n2 = t % imp_mesh_bins
             n3 = 3 * n_particles
          end if
@@ -684,7 +766,7 @@ contains
       end do SENSITIVITY_LOOP
 
   end subroutine collect_ifpcal
-#endif 
+#endif
 
 
 !===============================================================================
@@ -702,11 +784,14 @@ contains
      integer :: m
      integer :: n
      real(8) :: value
+     real(8) :: poleValue
+     integer :: r
+     integer :: s
 
      call collect_ifpcal()
 
      if (master) then
-       ! A loop over all sensitivities is necessary 
+       ! A loop over all sensitivities is necessary
        SENSITIVITY_LOOP: do i = 1, n_sens
           ! Get index of tally and pointer to tally
           t => sensitivities(i)
@@ -715,7 +800,7 @@ contains
           do j = 1, 3 * n_particles
              t % denom = t % denom + t % neutronfission(j) * t % neutronvalue(j)
           end do
-        
+
           do k = 1, t % n_nuclide_bins
              do l = 1, t % n_score_bins
                 do m = 1, t % n_mesh_bins
@@ -723,6 +808,14 @@ contains
                       value = sum(t%neutrontally(:,k,l,m,n)*t%neutronvalue(:))/t % denom
                       t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
                       t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value * value
+                      ! Loop over multipole parameters
+                      do r = 1, MAX_PARAMS
+                        do s = 1, MAX_POLES
+                           poleValue = sum(t%poleNeutrontally(:,k,l,m,n,r,s)*t%neutronvalue(:))/t % denom
+                           t%poleResults(1,k,l,m,n,r,s) = t%poleResults(1,k,l,m,n,r,s) + poleValue
+                           t%poleResults(2,k,l,m,n,r,s) = t%poleResults(2,k,l,m,n,r,s) + poleValue * poleValue
+                        end do
+                      end do
                    end do
                 end do
              end do
@@ -753,37 +846,37 @@ contains
           ! Get index of tally and pointer to tally
           t => sensitivities(i)
           t % imp_realizations = t % imp_realizations + 1
- 
+
           do k = 1, t % imp_mesh_bins
              if (t % neutronfission(k) /= 0) then
                t % importance(k) = t % importance(k) + &
                sum(t % neutrontally(:,1,1,k,1) * t % neutronvalue(:))/&
                    t % neutronfission(k)
-             else 
+             else
                t % importance(k) = t % importance(k)
              end if
              if (current_batch == n_inactive) then
                t % importance(k) = t % importance(k) / t % imp_realizations
                !print *, t % importance(k)
-             end if 
+             end if
           end do
-          
+
        end do SENSITIVITY_LOOP
      end if
 
-     if (current_batch ==  n_inactive) then 
+     if (current_batch ==  n_inactive) then
      ! distribute this importance distribution to different process
 #ifdef MPI
-        ! A loop over all sensitivities is necessary 
-        do i = 1, n_sens  
+        ! A loop over all sensitivities is necessary
+        do i = 1, n_sens
            ! Get index of tally and pointer to tally
            t => sensitivities(i)
            n = t % imp_mesh_bins
            call MPI_BCAST(t % importance, n, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
         end do
 #endif
-     end if 
-     
+     end if
+
 
   end subroutine importance_cal
 
@@ -800,12 +893,12 @@ contains
      integer :: k
      integer :: n
 
-     
+
      call collect_fm()
 
      if (master) then
        call fm_eigenvalue(1)
-       ! A loop over all sensitivities is necessary 
+       ! A loop over all sensitivities is necessary
        SENSITIVITY_LOOP: do i = 1, n_sens
           ! Get index of tally and pointer to tally
           t => sensitivities(i)
@@ -821,8 +914,8 @@ contains
 
      ! distribute this importance distribution to different process
 #ifdef MPI
-     ! A loop over all sensitivities is necessary 
-     do i = 1, n_sens  
+     ! A loop over all sensitivities is necessary
+     do i = 1, n_sens
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
         n = t % imp_mesh_bins
@@ -849,7 +942,7 @@ contains
      integer :: i_mesh
      integer :: imp_mesh_bin
 
-     ! A loop over all sensitivities is necessary 
+     ! A loop over all sensitivities is necessary
      SENSITIVITY_LOOP: do i = 1, n_sens
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
@@ -868,7 +961,7 @@ contains
 
         ! cumulate sensitivity at each collision point
         if (p % material /= MATERIAL_VOID) then
-            mat => materials(p % material)          
+            mat => materials(p % material)
             t % clutchsen(:,:,:,:) = t % clutchsen(:,:,:,:) + &
             t % cumtally(:,:,:,:) * p % wgt * t % importance(imp_mesh_bin) * &
                  material_xs % nu_fission / material_xs % total
@@ -887,7 +980,7 @@ contains
 !===============================================================================
 
   subroutine sensitivity_clutch_fission(p, mt_number)
- 
+
      ! progenitor is a global parameter
 
     type(Particle), intent(in) :: p
@@ -909,7 +1002,7 @@ contains
     type(RegularMesh), pointer :: m
 
 
-    ! A loop over all sensitivities is necessary 
+    ! A loop over all sensitivities is necessary
 
     SENSITIVITY_LOOP: do i = 1, n_sens
 
@@ -918,7 +1011,7 @@ contains
       energy_bin = 0
       nuclide_bin = 0
       imp_mesh_bin = 0
-    
+
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
 
@@ -930,7 +1023,7 @@ contains
       else
          call fatal_error("Could not find mesh " // trim(to_str(t % impmeshid)) &
          // " specified on sensitivity " // trim(to_str(t % id)))
-      end if  
+      end if
       call get_mesh_bin(m, p % coord(1) % xyz, imp_mesh_bin)
       if (imp_mesh_bin == 0) cycle SENSITIVITY_LOOP
 
@@ -938,35 +1031,35 @@ contains
       ! Energy logic
       if (mt_number == FISSION_CHI) then
          energy_bin = p % energy_born
-      else 
+      else
          energy_bin = p % energy_fission
       end if
       if (energy_bin == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
-      ! Nuclide logic,  to check if the collision nuclide is in the 
+      ! Nuclide logic,  to check if the collision nuclide is in the
       ! sensitivity tally list
-      NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins   
+      NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins
 
          ! Get index of nuclide in nuclides array
-         i_nuclide_sen = t % nuclide_bins(k)          
-             
+         i_nuclide_sen = t % nuclide_bins(k)
+
          ! the collision nuclide is in the sensitivity tally list
-         if (i_nuclide_sen == p % nuclide_born) then     
-  
+         if (i_nuclide_sen == p % nuclide_born) then
+
            nuclide_bin = k
-  
+
            exit NUCLIDE_BIN_LOOP
-  
+
          end if
 
        end do NUCLIDE_BIN_LOOP
       if (nuclide_bin == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
-      ! Score logic,  to check if the score is in the 
+      ! Score logic,  to check if the score is in the
       ! sensitivity tally list
-      SCORE_BIN_LOOP: do j = 1, t % n_score_bins  
+      SCORE_BIN_LOOP: do j = 1, t % n_score_bins
 
           ! determine what type of score bin
           i_score_sen = t % score_bins(j)
@@ -977,9 +1070,9 @@ contains
              score_bin = j
 
              exit SCORE_BIN_LOOP
- 
+
            end if
- 
+
        end do SCORE_BIN_LOOP
 
        if (score_bin == 0) cycle SENSITIVITY_LOOP
@@ -1017,7 +1110,7 @@ contains
     type(RegularMesh), pointer :: m
 
 
-    ! A loop over all sensitivities isn't necessary, need to be modified 
+    ! A loop over all sensitivities isn't necessary, need to be modified
 
     SENSITIVITY_LOOP: do i = 1, n_sens
 
@@ -1051,7 +1144,7 @@ contains
          call fatal_error("Could not find mesh " // trim(to_str(t % meshid)) &
            // " specified on sensitivity " // trim(to_str(t % id)))
       end if
-      
+
       call get_mesh_bin(m, p % coord(1) % xyz, b % mesh_born)
 
     end do SENSITIVITY_LOOP
@@ -1065,16 +1158,16 @@ contains
 !===============================================================================
 
   subroutine score_denom_clutch(p)
- 
+
      type(Particle), intent(in) :: p
      type(RegularMesh), pointer :: m
      type(SensitivityObject), pointer :: t
-     
+
      integer :: i
      integer :: i_mesh
      integer :: imp_mesh_bin    ! index for importance mesh bin
 
-     ! A loop over all sensitivities isn't necessary, need to be modified 
+     ! A loop over all sensitivities isn't necessary, need to be modified
      SENSITIVITY_LOOP: do i = 1, n_sens
 
       ! Get index of tally and pointer to tally
@@ -1088,14 +1181,14 @@ contains
       else
          call fatal_error("Could not find mesh " // trim(to_str(t % impmeshid)) &
          // " specified on sensitivity " // trim(to_str(t % id)))
-      end if  
+      end if
       call get_mesh_bin(m, p % coord(1) % xyz, imp_mesh_bin)
 
       if (imp_mesh_bin == 0) cycle SENSITIVITY_LOOP
 
       t % denom = t % denom + &
          p % wgt * t % importance(imp_mesh_bin) * material_xs % nu_fission / &
-         material_xs % total 
+         material_xs % total
       end do SENSITIVITY_LOOP
 
   end subroutine score_denom_clutch
@@ -1106,7 +1199,7 @@ contains
 !===============================================================================
 
   subroutine sensitivity_clutch(p)
- 
+
      type(Particle), intent(in) :: p
 
      if (clutch_first) call sensitivity_clutch_scacol(p)
@@ -1128,13 +1221,13 @@ contains
 ! (focused on CLUTCH method)
 !===============================================================================
   subroutine collect_clutchcal()
- 
+
       type(SensitivityObject), pointer :: t
       integer :: i         ! sensitivity loop index
       integer :: n         ! total size of count variable neutrontally
       real(8) :: dummy     ! temporary receive buffer for non-root reductions
 
-      ! A loop over all sensitivities is necessary 
+      ! A loop over all sensitivities is necessary
       SENSITIVITY_LOOP: do i = 1, n_sens
          ! Get index of tally and pointer to tally
          t => sensitivities(i)
@@ -1155,7 +1248,7 @@ contains
       end do SENSITIVITY_LOOP
 
   end subroutine collect_clutchcal
-#endif 
+#endif
 
 
 !===============================================================================
@@ -1175,12 +1268,12 @@ contains
      call collect_clutchcal()
 
      if (master) then
-       ! A loop over all sensitivities is necessary 
+       ! A loop over all sensitivities is necessary
        SENSITIVITY_LOOP: do i = 1, n_sens
           ! Get index of tally and pointer to tally
           t => sensitivities(i)
           t % n_realizations = t % n_realizations + 1
-          
+
           do k = 1, t % n_nuclide_bins
              do l = 1, t % n_score_bins
                 do m = 1, t % n_mesh_bins
@@ -1226,9 +1319,13 @@ contains
                   t%results(1,k,l,m,n) = t%results(1,k,l,m,n)/t%n_realizations
                   t%results(2,k,l,m,n) = sqrt((t%results(2,k,l,m,n)/t%n_realizations - &
                   t%results(1,k,l,m,n)*t%results(1,k,l,m,n))/(t%n_realizations-1))
+
+                  t%poleResults(1,k,l,m,n,:,:) = t%poleResults(1,k,l,m,n,:,:)/t%n_realizations
+                  t%poleResults(2,k,l,m,n,:,:)= sqrt((t%poleResults(2,k,l,m,n,:,:)/t%n_realizations - &
+                  t%poleResults(1,k,l,m,n,:,:)*t%poleResults(1,k,l,m,n,:,:))/(t%n_realizations-1))
                end do
             end do
-         end do    
+         end do
       end do
 
       ! t%results(1,:,:,:,:)=t%results(1,:,:,:,:)/t%n_realizations
@@ -1240,7 +1337,7 @@ contains
   end subroutine sen_statistics
 
 !===============================================================================
-! GET_NEXT_BIN_SEN gives the index for the next valid filter bin and a weight 
+! GET_NEXT_BIN_SEN gives the index for the next valid filter bin and a weight
 ! that will be applied to the flux, this subroutine will be called when using
 ! tracklength estimator to tally in sensitivity calculations
 !===============================================================================
@@ -1476,6 +1573,9 @@ contains
     real(8) :: f                    ! interpolation factor
     real(8) :: score                ! analog tally score
     real(8) :: E                    ! particle energy
+    real(8) :: poleScore(MAX_PARAMS,MAX_POLES)    ! analog tally score
+
+    associate (nuc => nuclides(i_nuclide))
 
     i = 0
     SCORE_LOOP: do q = 1, t % n_score_bins
@@ -1491,29 +1591,41 @@ contains
 
       case (SCORE_TOTAL)
         score = micro_xs(i_nuclide) % total * atom_density * flux
+        poleScore = nuc % RRR * nuc % sigT_derivative * score
 
       case (SCORE_SCATTER)
         score = (micro_xs(i_nuclide) % total &
                  - micro_xs(i_nuclide) % absorption) * atom_density * flux
 
+        poleScore = nuc % RRR * (nuc % sigT_derivative &
+                  - nuc % sigA_derivative)* score
+
       case (SCORE_ABSORPTION)
         score = micro_xs(i_nuclide) % absorption * atom_density * flux
+        poleScore = nuc % RRR * nuc % sigA_derivative * score
 
       case (SCORE_FISSION)
         score = micro_xs(i_nuclide) % fission * atom_density * flux
+        poleScore = nuc % RRR * nuc % sigF_derivative * score
 
       case (SCORE_CAPTURE)
         score = (micro_xs(i_nuclide) % absorption &
                  - micro_xs(i_nuclide) % fission) * atom_density * flux
 
+        poleScore = nuc % RRR * (nuc % sigA_derivative &
+                  - nuc % sigF_derivative)* score
+
       case (ELASTIC)
         score = micro_xs(i_nuclide) % elastic * atom_density * flux
+        poleScore = nuc % RRR * nuc % sigElastic_derivative * score
 
       case (FISSION_CHI)
         score = ZERO
- 
+        poleScore = ZERO
+
       case (FISSION_NUBAR)
         score = ZERO
+        poleScore = ZERO
 
       case default
         ! Any other cross section has to be calculated on-the-fly. For
@@ -1539,6 +1651,7 @@ contains
                     score = ((ONE - f) * xs % value(i_energy - &
                          xs % threshold + 1) + f * xs % value(i_energy - &
                          xs % threshold + 2)) * atom_density * flux
+                    poleScore = ZERO
                   end if
                 end associate
               end if
@@ -1554,7 +1667,12 @@ contains
       t % cumtally(bin_nuclide, i, bin_mesh, bin_energy) = &
       t % cumtally(bin_nuclide, i, bin_mesh, bin_energy) - score
 
+      t % poleCumtally(bin_nuclide, i, bin_mesh, bin_energy,:,:) = &
+      t % poleCumtally(bin_nuclide, i, bin_mesh, bin_energy,:,:) - poleScore
+
     end do SCORE_LOOP
+
+    end associate
 
   end subroutine score_track_general
 
@@ -1569,7 +1687,7 @@ contains
 !===============================================================================
 
   subroutine reaction_rates()
-   
+
     integer :: i_sen       ! index in sensitivities array
     integer :: n
     integer :: j
@@ -1609,9 +1727,9 @@ contains
               MPI_COMM_WORLD, mpi_err)
          end if
       end if
-#endif 
+#endif
 
-      if (master) then 
+      if (master) then
          s % respnumer = s % respnumer / n_inactive
          s % respdenom = s % respdenom / n_inactive
          if (adjointmethod == 6) then
@@ -1663,7 +1781,7 @@ contains
          i_tally = resptally_dict % get_key(r % numerid)
          s % respnumer = s % respnumer + resptalresult(i_tally)
          ! mesh_born_fm is not correct in first generation, so discard it
-         if (adjointmethod == 6 .AND. current_batch > 1) then 
+         if (adjointmethod == 6 .AND. current_batch > 1) then
             s % tallynumer(p % mesh_born_fm) = s % tallynumer(p % mesh_born_fm)+&
             resptalresult(i_tally)
          end if
@@ -1680,7 +1798,7 @@ contains
 
 
 !===============================================================================
-! SCORE_DIRECTANDINTRA calculates direct sensitivity and intragenerational 
+! SCORE_DIRECTANDINTRA calculates direct sensitivity and intragenerational
 ! sensitivity term.
 !===============================================================================
 
@@ -1697,7 +1815,7 @@ contains
     type(ResponseObject), pointer :: r
     type(TallyObject), pointer :: t
     type(RegularMesh), pointer :: m
- 
+
     integer :: k
     integer :: j
     integer :: bin_mesh
@@ -1721,7 +1839,7 @@ contains
       i_tally = resptally_dict % get_key(r % denomid)
       gptimportance = gptimportance - resptalresult(i_tally) / s % respdenom
       s % results(3,:,:,:,:) = s % results(3,:,:,:,:) + &
-      s % cumtally(:,:,:,:) * gptimportance 
+      s % cumtally(:,:,:,:) * gptimportance
 
       ! ======================================================================
       ! Mesh logic
@@ -1737,7 +1855,7 @@ contains
                                s % n_energy_bins + 1, p % E)
 
       ! ======================================================================
-      ! decide whether there is a direct sensitivity term 
+      ! decide whether there is a direct sensitivity term
       i_tally = resptally_dict % get_key(r % numerid)
       t => resp_tallies(i_tally)
       call tally_in_senlist(s,t,bin_nuclide_numer,bin_score_numer)
@@ -1760,7 +1878,7 @@ contains
          s % results(3,bin_nuclide_denom,bin_score_denom,bin_mesh, bin_energy) - &
          resptalresult(i_tally) / s % respdenom
       end if
-    
+
     end do SENSITIVITY_LOOP
 
   end subroutine score_directandintra
@@ -1781,7 +1899,7 @@ contains
 
     call score_tally(p)  ! get all tally values at one collision point
 
-    ! A loop over all sensitivities is necessary 
+    ! A loop over all sensitivities is necessary
     SENSITIVITY_LOOP: do i_sen = 1, n_sens
 
        ! Get index of tally and pointer to tally
@@ -1791,7 +1909,7 @@ contains
 
        ! ======================================================================
        ! calculate the intergenerational importance
-       if (adjointmethod == 4) then 
+       if (adjointmethod == 4) then
           i_tally = resptally_dict % get_key(r % numerid)
           gptimportance = resptalresult(i_tally) / s % respnumer
           i_tally = resptally_dict % get_key(r % denomid)
@@ -1801,14 +1919,14 @@ contains
           ! need this gptvaluenumer to calculate s % respdenom in inactive batches
           i_tally = resptally_dict % get_key(r % numerid)
           s % gptvaluenumer(p % ifp_id) = s % gptvaluenumer(p % ifp_id) + &
-          resptalresult(i_tally)  
+          resptalresult(i_tally)
           i_tally = resptally_dict % get_key(r % denomid)
           s % gptvaluedenom(p % ifp_id) = s % gptvaluedenom(p % ifp_id) + &
           resptalresult(i_tally)
        end if
 
     end do SENSITIVITY_LOOP
- 
+
   end subroutine score_gpt_value
 
 
@@ -1819,7 +1937,7 @@ contains
 ! (focused on IFP method)
 !===============================================================================
   subroutine collect_gptifpcal()
- 
+
       type(SensitivityObject), pointer :: s
       integer :: i         ! sensitivity loop index
       integer :: n1        ! total size of count variable neutrontally
@@ -1827,7 +1945,7 @@ contains
       integer :: n3        ! total size of count variable neutronvalue
       real(8) :: dummy     ! temporary receive buffer for non-root reductions
 
-      ! A loop over all sensitivities is necessary 
+      ! A loop over all sensitivities is necessary
       SENSITIVITY_LOOP: do i = 1, n_sens
          ! Get index of tally and pointer to tally
          s => sensitivities(i)
@@ -1856,7 +1974,7 @@ contains
              end if
          end if
          if (s % method == 5) then
-            n1 = 3 * n_particles * s % imp_mesh_bins 
+            n1 = 3 * n_particles * s % imp_mesh_bins
             n2 = 3 * n_particles
             n3 = s % imp_mesh_bins
             ! collect values from all processors
@@ -1881,11 +1999,11 @@ contains
                     MPI_COMM_WORLD, mpi_err)
              end if
          end if
-         
+
       end do SENSITIVITY_LOOP
 
   end subroutine collect_gptifpcal
-#endif 
+#endif
 
 
 !===============================================================================
@@ -1907,12 +2025,12 @@ contains
      call collect_gptifpcal()
 
      if (master) then
-       ! A loop over all sensitivities is necessary 
+       ! A loop over all sensitivities is necessary
        SENSITIVITY_LOOP: do i = 1, n_sens
           ! Get index of tally and pointer to tally
           s => sensitivities(i)
           s % n_realizations = s % n_realizations + 1
-        
+
           do k = 1, s % n_nuclide_bins
              do l = 1, s % n_score_bins
                 do m = 1, s % n_mesh_bins
@@ -1950,7 +2068,7 @@ contains
      call collect_gptifpcal()
 
      if (master) then
-       ! A loop over all sensitivities is necessary 
+       ! A loop over all sensitivities is necessary
        SENSITIVITY_LOOP: do i = 1, n_sens
           ! Get index of tally and pointer to tally
           t => sensitivities(i)
@@ -1959,35 +2077,35 @@ contains
           tallydenom = sum(t % gptvaluedenom) / (ifp_block-1) ! negative values
           t % respnumer = t % respnumer + tallynumer
           t % respdenom = t % respdenom + tallydenom
- 
+
           do k = 1, t % imp_mesh_bins
              if (t % neutronfission(k) /= 0) then
                t % importance(k) = t % importance(k) + &
                sum(t % neutrontally(:,1,1,k,1) * &
                (t%gptvaluenumer(:)/tallynumer-t%gptvaluedenom(:)/tallydenom))/&
                t % neutronfission(k)
-             else 
+             else
                t % importance(k) = t % importance(k)
              end if
-             if (current_batch == n_inactive) then 
+             if (current_batch == n_inactive) then
                t % importance(k) = t % importance(k) / t % imp_realizations
                !print *, t % importance(k)
-             end if 
+             end if
           end do
 
-          if (current_batch == n_inactive) then 
-             t % respnumer = t % respnumer / t % imp_realizations 
+          if (current_batch == n_inactive) then
+             t % respnumer = t % respnumer / t % imp_realizations
              t % respdenom = t % respdenom / t % imp_realizations
           end if
-          
+
        end do SENSITIVITY_LOOP
      end if
 
-     if (current_batch == n_inactive) then 
+     if (current_batch == n_inactive) then
      ! distribute this importance distribution to different process
 #ifdef MPI
-        ! A loop over all sensitivities is necessary 
-        do i = 1, n_sens  
+        ! A loop over all sensitivities is necessary
+        do i = 1, n_sens
            ! Get index of tally and pointer to tally
            t => sensitivities(i)
            n = t % imp_mesh_bins
@@ -1996,8 +2114,8 @@ contains
            call MPI_BCAST(t % respdenom,  1, MPI_REAL8, 0, MPI_COMM_WORLD, mpi_err)
         end do
 #endif
-     end if 
-     
+     end if
+
 
   end subroutine importance_gpt_cal
 
@@ -2019,7 +2137,7 @@ contains
      call collect_fm()
 
      if (master) then
-       ! A loop over all sensitivities is necessary 
+       ! A loop over all sensitivities is necessary
        SENSITIVITY_LOOP: do i = 1, n_sens
           ! Get index of tally and pointer to tally
           t => sensitivities(i)
@@ -2036,8 +2154,8 @@ contains
 
      ! distribute this importance distribution to different process
 #ifdef MPI
-     ! A loop over all sensitivities is necessary 
-     do i = 1, n_sens  
+     ! A loop over all sensitivities is necessary
+     do i = 1, n_sens
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
         n = t % imp_mesh_bins
@@ -2054,7 +2172,7 @@ contains
 ! FM_FIXEDSOURCE means calculation of the generalized function
 !===============================================================================
   subroutine fm_fixedsource(gptsource,gptflux)
- 
+
     real(8), intent(in) :: gptsource(fismatrix % fm_dimension)
     real(8), intent(out) :: gptflux(fismatrix % fm_dimension)
 
@@ -2084,20 +2202,20 @@ contains
     normfa = 0
     do k = 1, fismatrix % fm_dimension
         normfa = normfa + forwardflux(k) * adjointflux(k)
-    end do 
+    end do
     gptflux = ZERO
     tmp1 = ZERO
 
     do si = 1, 20  ! source iteration
        do i = 1, fismatrix % fm_dimension
           tmp1(i) = 0
-          do j = 1, fismatrix % fm_dimension   
-             if (fismatrix % source(i) /=0) then  
+          do j = 1, fismatrix % fm_dimension
+             if (fismatrix % source(i) /=0) then
                tmp1(i) = tmp1(i) + fismatrix % greenterm(j,i) * &
                gptflux(j) / fismatrix % source(i) / eigenvalue
              end if
           end do
-          if (fismatrix % source(i) /=0) then  
+          if (fismatrix % source(i) /=0) then
             ! here the fismatrix % source is a cumulative value
             tmp1(i) = tmp1(i) + gptsource(i) * n_inactive / fismatrix % source(i)
           end if
@@ -2105,14 +2223,14 @@ contains
         norm = 0
         do k = 1, fismatrix % fm_dimension
            norm = norm + tmp1(k) * forwardflux(k)
-        end do    
-        gptflux = tmp1 - norm * adjointflux / normfa     
+        end do
+        gptflux = tmp1 - norm * adjointflux / normfa
     end do
 
     if(allocated(tmp1)) deallocate (tmp1)
     if(allocated(forwardflux)) deallocate (forwardflux)
     if(allocated(adjointflux)) deallocate (adjointflux)
- 
+
   end subroutine fm_fixedsource
 
 !===============================================================================
@@ -2134,7 +2252,7 @@ contains
     type(TallyObject), pointer :: t
     type(RegularMesh), pointer :: m
     type(RegularMesh), pointer :: impm
- 
+
     integer :: k
     integer :: j
     integer :: bin_mesh
@@ -2165,7 +2283,7 @@ contains
       gptimportance = gptimportance + p % wgt * s % importance(bin_impmesh) * &
       material_xs % nu_fission / material_xs % total / keff
       s % clutchsen(:,:,:,:) = s % clutchsen(:,:,:,:) + &
-      s % cumtally(:,:,:,:) * gptimportance 
+      s % cumtally(:,:,:,:) * gptimportance
 
       ! ======================================================================
       ! Mesh logic
@@ -2181,7 +2299,7 @@ contains
                                s % n_energy_bins + 1, p % E)
 
       ! ======================================================================
-      ! decide whether there is a direct sensitivity term 
+      ! decide whether there is a direct sensitivity term
       i_tally = resptally_dict % get_key(r % numerid)
       t => resp_tallies(i_tally)
       call tally_in_senlist(s,t,bin_nuclide_numer,bin_score_numer)
@@ -2204,7 +2322,7 @@ contains
          s % clutchsen(bin_nuclide_denom,bin_score_denom,bin_mesh, bin_energy) - &
          resptalresult(i_tally) / s % respdenom
       end if
-    
+
     end do SENSITIVITY_LOOP
 
   end subroutine sensitivity_gclutch_scacol
@@ -2215,7 +2333,7 @@ contains
 !===============================================================================
 
   subroutine sensitivity_gclutch_fission(p, mt_number)
- 
+
      ! progenitor is a global parameter
 
     type(Particle), intent(in) :: p
@@ -2241,7 +2359,7 @@ contains
     real(8) :: gptimportance
 
     call score_tally(p)  ! get all tally values at one collision point
-    ! A loop over all sensitivities is necessary 
+    ! A loop over all sensitivities is necessary
 
     SENSITIVITY_LOOP: do i = 1, n_sens
 
@@ -2250,7 +2368,7 @@ contains
       energy_bin = 0
       nuclide_bin = 0
       imp_mesh_bin = 0
-    
+
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
 
@@ -2262,7 +2380,7 @@ contains
       else
          call fatal_error("Could not find mesh " // trim(to_str(t % impmeshid)) &
          // " specified on sensitivity " // trim(to_str(t % id)))
-      end if  
+      end if
       call get_mesh_bin(m, p % coord(1) % xyz, imp_mesh_bin)
       if (imp_mesh_bin == 0) cycle SENSITIVITY_LOOP
 
@@ -2270,35 +2388,35 @@ contains
       ! Energy logic
       if (mt_number == FISSION_CHI) then
          energy_bin = p % energy_born
-      else 
+      else
          energy_bin = p % energy_fission
       end if
       if (energy_bin == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
-      ! Nuclide logic,  to check if the collision nuclide is in the 
+      ! Nuclide logic,  to check if the collision nuclide is in the
       ! sensitivity tally list
-      NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins   
+      NUCLIDE_BIN_LOOP: do k = 1, t % n_nuclide_bins
 
          ! Get index of nuclide in nuclides array
-         i_nuclide_sen = t % nuclide_bins(k)          
-             
+         i_nuclide_sen = t % nuclide_bins(k)
+
          ! the collision nuclide is in the sensitivity tally list
-         if (i_nuclide_sen == p % nuclide_born) then     
-  
+         if (i_nuclide_sen == p % nuclide_born) then
+
            nuclide_bin = k
-  
+
            exit NUCLIDE_BIN_LOOP
-  
+
          end if
 
        end do NUCLIDE_BIN_LOOP
       if (nuclide_bin == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
-      ! Score logic,  to check if the score is in the 
+      ! Score logic,  to check if the score is in the
       ! sensitivity tally list
-      SCORE_BIN_LOOP: do j = 1, t % n_score_bins  
+      SCORE_BIN_LOOP: do j = 1, t % n_score_bins
 
           ! determine what type of score bin
           i_score_sen = t % score_bins(j)
@@ -2309,9 +2427,9 @@ contains
              score_bin = j
 
              exit SCORE_BIN_LOOP
- 
+
            end if
- 
+
        end do SCORE_BIN_LOOP
 
        if (score_bin == 0) cycle SENSITIVITY_LOOP
@@ -2327,7 +2445,7 @@ contains
        ! calculate the intergenerational term
        gptimportance = gptimportance + p % wgt * t % importance(imp_mesh_bin) * &
        material_xs % nu_fission / material_xs % total / keff
-       
+
 
        t % clutchsen(nuclide_bin,score_bin,p % mesh_born,energy_bin) = &
        t % clutchsen(nuclide_bin,score_bin,p % mesh_born,energy_bin) + &
@@ -2344,7 +2462,7 @@ contains
 !===============================================================================
 
   subroutine sensitivity_gptclutch(p)
- 
+
      type(Particle), intent(in) :: p
 
      if (clutch_first) call sensitivity_gclutch_scacol(p)
@@ -2365,13 +2483,13 @@ contains
 ! (focused on CLUTCH method)
 !===============================================================================
   subroutine collect_gptclutchcal()
- 
+
       type(SensitivityObject), pointer :: t
       integer :: i         ! sensitivity loop index
       integer :: n         ! total size of count variable neutrontally
       real(8) :: dummy     ! temporary receive buffer for non-root reductions
 
-      ! A loop over all sensitivities is necessary 
+      ! A loop over all sensitivities is necessary
       SENSITIVITY_LOOP: do i = 1, n_sens
          ! Get index of tally and pointer to tally
          t => sensitivities(i)
@@ -2388,7 +2506,7 @@ contains
       end do SENSITIVITY_LOOP
 
   end subroutine collect_gptclutchcal
-#endif 
+#endif
 
 
 !===============================================================================
@@ -2408,12 +2526,12 @@ contains
      call collect_gptclutchcal()
 
      if (master) then
-       ! A loop over all sensitivities is necessary 
+       ! A loop over all sensitivities is necessary
        SENSITIVITY_LOOP: do i = 1, n_sens
           ! Get index of tally and pointer to tally
           t => sensitivities(i)
           t % n_realizations = t % n_realizations + 1
-          
+
           do k = 1, t % n_nuclide_bins
              do l = 1, t % n_score_bins
                 do m = 1, t % n_mesh_bins
@@ -2435,7 +2553,7 @@ contains
 
 
 !===============================================================================
-! TALLY_IN_SENLIST decides whether one tally is in the sensitivity list 
+! TALLY_IN_SENLIST decides whether one tally is in the sensitivity list
 !===============================================================================
 
   subroutine tally_in_senlist(s,t,nuclide,score)
@@ -2452,22 +2570,22 @@ contains
     score   = 0
 
     ! ======================================================================
-    ! Nuclide logic,  to check if the response tally's nuclide is in the 
+    ! Nuclide logic,  to check if the response tally's nuclide is in the
     ! sensitivity tally list
-    NUCLIDE_BIN_LOOP: do i = 1, s % n_nuclide_bins   
+    NUCLIDE_BIN_LOOP: do i = 1, s % n_nuclide_bins
        ! Get index of nuclide in nuclides array
-       i_nuclide_sen = s % nuclide_bins(i)                   
+       i_nuclide_sen = s % nuclide_bins(i)
        ! the collision nuclide is in the sensitivity tally list
-       if (s % nuclide_bins(i)  == t % nuclide_bins(1)) then     
+       if (s % nuclide_bins(i)  == t % nuclide_bins(1)) then
           nuclide = i
           exit NUCLIDE_BIN_LOOP
-       end if 
+       end if
      end do NUCLIDE_BIN_LOOP
 
      ! ======================================================================
-     ! Score logic,  to check if the response tally's score is in the 
+     ! Score logic,  to check if the response tally's score is in the
      ! sensitivity tally list
-     SCORE_BIN_LOOP: do i = 1, s % n_score_bins  
+     SCORE_BIN_LOOP: do i = 1, s % n_score_bins
         ! determine what type of score bin
         i_score_sen = s % score_bins(i)
         ! the reaction type is in the sensitivity tally list
@@ -2546,7 +2664,7 @@ contains
           if (p % material /= MATERIAL_VOID) then
             ! Get pointer to current material
             mat => materials(p % material)
-                 
+
             ! Determine if nuclide is actually in material
             NUCLIDE_MAT_LOOP: do j = 1, mat % n_nuclides
               ! If index of nuclide matches the j-th nuclide listed in the
@@ -2557,7 +2675,7 @@ contains
               ! the specified nuclide to be tallied is not in this material,
               ! and there isn't contribution of this collision to i_tally
               if (j == mat % n_nuclides) then
-                 flux = 0  
+                 flux = 0
               end if
             end do NUCLIDE_MAT_LOOP
 
@@ -2592,7 +2710,7 @@ contains
     integer,           intent(in)    :: i_nuclide
     integer,           intent(in)    :: filter_index   ! for % results
     real(8),           intent(in)    :: flux           ! flux estimate
-    real(8),           intent(in)    :: atom_density   ! atom/b-cm    
+    real(8),           intent(in)    :: atom_density   ! atom/b-cm
     real(8),           intent(out)   :: score          ! score of this collision
 
     integer :: l                    ! loop index for nuclides in material

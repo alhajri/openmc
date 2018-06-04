@@ -9,7 +9,7 @@ module sensitivity_header
   implicit none
 
 !===============================================================================
-! SENSITIVITYOBJECT describes a user-specified sensitivity. The region of phase 
+! SENSITIVITYOBJECT describes a user-specified sensitivity. The region of phase
 ! space to tally in is given by the TallyFilters and the results are stored in a
 ! SensitivityResult array.
 !===============================================================================
@@ -24,11 +24,11 @@ module sensitivity_header
     integer :: blocklen = 0         ! user-defined block length (IFP and CLUTCH(IFP))
     character(len=104) :: name = "" ! user-defined name
     ! If method == 1, it is IFP method
-    ! If method == 2, it is CLUTCH method using IFP to calculate IMP 
-    ! If method == 3, it is CLUTCH method using FM to calculate IMP, blocklen = 0 
+    ! If method == 2, it is CLUTCH method using IFP to calculate IMP
+    ! If method == 3, it is CLUTCH method using FM to calculate IMP, blocklen = 0
 
     ! response numerator and denominator for a GPT sensitivity calculation
-    integer              :: response = 0  ! response id 
+    integer              :: response = 0  ! response id
     real(8)              :: respnumer = 0
     real(8)              :: respdenom = 0
 
@@ -45,7 +45,7 @@ module sensitivity_header
     integer              :: n_energy_bins = 0
     real(8), allocatable :: energystructure(:)
 
-    ! importance mesh bins 
+    ! importance mesh bins
     integer              :: imp_mesh_bins = 0
     real(8), allocatable :: importance(:)
 
@@ -54,11 +54,11 @@ module sensitivity_header
     ! second dimension of the array is for the combination of filters
     ! (e.g. mesh discretization and specific energy group, etc.)
 
-    
-    ! sensitivity for different mesh, different energy, different nuclide 
+
+    ! sensitivity for different mesh, different energy, different nuclide
     ! and reaction
-    real(8), allocatable :: results(:,:,:,:,:) 
-    
+    real(8), allocatable :: results(:,:,:,:,:)
+
     ! cumulative tally for a single tracking
     real(8), allocatable :: cumtally(:,:,:,:)
 
@@ -72,14 +72,14 @@ module sensitivity_header
     real(8), allocatable :: secondtally(:,:,:,:,:)
 
     ! tally result of different progenitor
-    real(8), allocatable :: neutrontally(:,:,:,:,:) 
+    real(8), allocatable :: neutrontally(:,:,:,:,:)
 
     ! neutron importance of different progenitor
     real(8), allocatable :: neutronvalue(:)
 
     ! gpt importance of different progenitor
     real(8), allocatable :: gptvaluenumer(:)
-    real(8), allocatable :: gptvaluedenom(:) 
+    real(8), allocatable :: gptvaluedenom(:)
 
     ! gpt importance tally used in fission matrix calculation
     real(8), allocatable :: tallynumer(:)
@@ -87,7 +87,7 @@ module sensitivity_header
 
     ! used in the calculation of denominator of sensitivity
     real(8), allocatable :: neutronfission(:)
- 
+
     ! reset property - allows a sen_tally to be reset after every batch
     logical :: reset = .false.
 
@@ -96,6 +96,24 @@ module sensitivity_header
 
     ! Number of realizations of tally random variables
     integer :: imp_realizations = 0
+
+    !===========================================================================
+    ! All multipole parameter sensitivities data structures are found here
+    !===========================================================================
+
+    ! In order to get the IFP tallies for multipole parameters, we need an
+    ! analog of the cumtally, neutrontally, secondtally, and results.
+
+    real(8), allocatable :: poleResults(:,:,:,:,:,:,:)
+
+    ! cumulative tally for a single tracking
+    real(8), allocatable :: poleCumtally(:,:,:,:,:,:)
+
+    ! cumulative tally for different secondary neutrons
+    real(8), allocatable :: poleSecondtally(:,:,:,:,:,:,:)
+
+    ! tally result of different progenitor
+    real(8), allocatable :: poleNeutrontally(:,:,:,:,:,:,:)
 
   end type SensitivityObject
 
