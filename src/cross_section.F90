@@ -7,7 +7,7 @@ module cross_section
   use global
   use list_header,      only: ListElemInt
   use material_header,  only: Material
-  use math,             only: faddeeva, broaden_wmp_polynomials
+  use math,             only: faddeeva, broaden_wmp_polynomials, w_derivative
   use multipole_header, only: FORM_RM, FORM_MLBW, MP_EA, RM_RT, RM_RA, RM_RF, &
                               MLBW_RT, MLBW_RX, MLBW_RA, MLBW_RF, FIT_T, FIT_A,&
                               FIT_F, MultipoleArray
@@ -637,15 +637,14 @@ contains
     complex(8) :: psi_chi  ! The value of the psi-chi function for the
                            !  asymptotic form
     complex(8) :: c_temp   ! complex temporary variable
-    complex(8) :: d_temp   ! complex temporary variable
     complex(8) :: w_val    ! The faddeeva function evaluated at Z
+    complex(8) :: dw_val
     complex(8) :: Z        ! sqrt(atomic weight ratio / kT) * (sqrt(E) - pole)
     complex(8) :: sigT_factor(multipole % num_l)
     complex(8) :: p        ! pole
     complex(8) :: r        ! residue
     complex(8) :: rx       ! residue competitive
-    real(8) :: denom
-    real(8) :: broadened_polynomials(multipole % fit_order + 1)
+    !real(8) :: broadened_polynomials(multipole % fit_order + 1)
     real(8) :: sqrtE       ! sqrt(E), eV
     real(8) :: invE        ! 1/E, eV
     real(8) :: dopp        ! sqrt(atomic weight ratio / kT) = 1 / (2 sqrt(xi))
@@ -696,59 +695,53 @@ contains
       do i_pole = startw, endw
         psi_chi = -ONEI / (multipole % data(MP_EA, i_pole) - sqrtE)
         c_temp = psi_chi / E
-        denom = abs(multipole % data(MP_EA, i_pole) - sqrtE)**4
-        d_temp = invE / denom
         p = multipole % data(MP_EA, i_pole)
         if (multipole % formalism == FORM_MLBW) then
           ! Total cross section derivative
           r = multipole % data(MLBW_RT, i_pole)
           rx = multipole % data(MLBW_RX, i_pole)
-          sigT(MP_EA_RE, i_pole) = 1
-          sigT(MP_EA_IM, i_pole) = 1
-          sigT(MLBW_RT_RE, i_pole) = 1
-          sigT(MLBW_RT_IM, i_pole) = 1
+          sigT(MP_EA_RE, i_pole) = real(invE*ONEI*sigT_factor(multipole % l_value(i_pole))*r/((p-sqrtE)**2)) &
+                                  + real(invE*ONEI*rx/((p-sqrtE)**2))
+          sigT(MP_EA_IM, i_pole) = real(-invE*sigT_factor(multipole % l_value(i_pole))*r/((p-sqrtE)**2)) &
+                                  + real(-invE*rx/((p-sqrtE)**2))
+          sigT(MLBW_RT_RE, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*c_temp)
+          sigT(MLBW_RT_IM, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*ONEI*c_temp)
           sigT(MLBW_RX_RE, i_pole) = real(c_temp)
           sigT(MLBW_RX_IM, i_pole) = real(ONEI*c_temp)
 
           ! Absorption cross section derivative
           r = multipole % data(MLBW_RA, i_pole)
-          sigA(MP_EA_RE, i_pole) = d_temp*(2*real(r)*aimag(p)*(real(p)-sqrtE) + &
-                      aimag(r)*(aimag(p)**2 - (real(p) - sqrtE)**2))
-          sigA(MP_EA_IM, i_pole) = -d_temp*(2*aimag(r)*aimag(p)*(real(p)-sqrtE) + &
-                      real(r)*( (real(p) - sqrtE)**2 - aimag(p)**2))
+          sigA(MP_EA_RE, i_pole) = real(invE*ONEI*r/((p-sqrtE)**2))
+          sigA(MP_EA_IM, i_pole) = real(-invE*r/((p-sqrtE)**2))
           sigA(MLBW_RA_RE, i_pole) = real(c_temp)
           sigA(MLBW_RA_IM, i_pole) = real(ONEI*c_temp)
 
           ! Absorption cross section derivative
           r = multipole % data(MLBW_RF, i_pole)
-          sigF(MP_EA_RE, i_pole) = d_temp*(2*real(r)*aimag(p)*(real(p)-sqrtE) + &
-                      aimag(r)*(aimag(p)**2 - (real(p) - sqrtE)**2))
-          sigF(MP_EA_IM, i_pole) = -d_temp*(2*aimag(r)*aimag(p)*(real(p)-sqrtE) + &
-                      real(r)*( (real(p) - sqrtE)**2 - aimag(p)**2))
+          sigF(MP_EA_RE, i_pole) = real(invE*ONEI*r/((p-sqrtE)**2))
+          sigF(MP_EA_IM, i_pole) = real(-invE*r/((p-sqrtE)**2))
           sigF(MLBW_RF_RE, i_pole) = real(c_temp)
           sigF(MLBW_RF_IM, i_pole) = real(ONEI*c_temp)
 
         else if (multipole % formalism == FORM_RM) then
           ! Total cross section derivative
           r = multipole % data(RM_RT, i_pole)
-          sigT(MP_EA_RE, i_pole) = 1
-          sigT(RM_RT_RE, i_pole) = 1
+          sigT(MP_EA_RE, i_pole) = real(invE*ONEI*sigT_factor(multipole % l_value(i_pole))*r/((p-sqrtE)**2))
+          sigT(MP_EA_IM, i_pole) = real(-invE*sigT_factor(multipole % l_value(i_pole))*r/((p-sqrtE)**2))
+          sigT(RM_RT_RE, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*c_temp)
+          sigT(RM_RT_IM, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*ONEI*c_temp)
 
           ! Absorption cross section derivative
           r = multipole % data(RM_RA, i_pole)
-          sigA(MP_EA_RE, i_pole) = d_temp*(2*real(r)*aimag(p)*(real(p)-sqrtE) + &
-                      aimag(r)*(aimag(p)**2 - (real(p) - sqrtE)**2))
-          sigA(MP_EA_IM, i_pole) = -d_temp*(2*aimag(r)*aimag(p)*(real(p)-sqrtE) + &
-                      real(r)*( (real(p) - sqrtE)**2 - aimag(p)**2))
+          sigA(MP_EA_RE, i_pole) = real(invE*ONEI*r/((p-sqrtE)**2))
+          sigA(MP_EA_IM, i_pole) = real(-invE*r/((p-sqrtE)**2))
           sigA(RM_RA_RE, i_pole) = real(c_temp)
           sigA(RM_RA_IM, i_pole) = real(ONEI*c_temp)
 
           ! Absorption cross section derivative
           r = multipole % data(RM_RF, i_pole)
-          sigF(MP_EA_RE, i_pole) = d_temp*(2*real(r)*aimag(p)*(real(p)-sqrtE) + &
-                      aimag(r)*(aimag(p)**2 - (real(p) - sqrtE)**2))
-          sigF(MP_EA_IM, i_pole) = -d_temp*(2*aimag(r)*aimag(p)*(real(p)-sqrtE) + &
-                      real(r)*( (real(p) - sqrtE)**2 - aimag(p)**2))
+          sigF(MP_EA_RE, i_pole) = real(invE*ONEI*r/((p-sqrtE)**2))
+          sigF(MP_EA_IM, i_pole) = real(-invE*r/((p-sqrtE)**2))
           sigF(RM_RF_RE, i_pole) = real(c_temp)
           sigF(RM_RF_IM, i_pole) = real(ONEI*c_temp)
         end if
@@ -757,31 +750,57 @@ contains
       ! At temperature, use Faddeeva function-based form.
       if (endw >= startw) then
         do i_pole = startw, endw
+          Z = (sqrtE - multipole % data(MP_EA, i_pole)) * dopp
+          w_val = faddeeva(Z) * dopp * invE * SQRT_PI
+          dw_val = w_derivative(Z,1)* dopp * invE * SQRT_PI
           if (multipole % formalism == FORM_MLBW) then
             ! Total cross section derivative
-            sigT(MP_EA, i_pole) = 1
-            sigT(MLBW_RT, i_pole) = 1
-            sigT(MLBW_RX, i_pole) = 1
+            r = multipole % data(MLBW_RT, i_pole)
+            rx = multipole % data(MLBW_RX, i_pole)
+            sigT(MP_EA_RE, i_pole) = real(-dopp*sigT_factor(multipole % l_value(i_pole))*r*dw_val) &
+                                  - real(-dopp*rx*dw_val)
+            sigT(MP_EA_IM, i_pole) = real(-ONEI*sigT_factor(multipole % l_value(i_pole))*dopp*r*dw_val) &
+                                  - real(-ONEI*dopp*rx*dw_val)
+            sigT(MLBW_RT_RE, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*w_val)
+            sigT(MLBW_RT_IM, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*ONEI*w_val)
+            sigT(MLBW_RX_RE, i_pole) = real(w_val)
+            sigT(MLBW_RX_IM, i_pole) = real(ONEI*w_val)
 
             ! Absorption cross section derivative
-            sigA(MP_EA, i_pole) = 1
-            sigA(MLBW_RA, i_pole) = 1
+            r = multipole % data(MLBW_RA, i_pole)
+            sigA(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
+            sigA(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
+            sigA(MLBW_RA_RE, i_pole) = real(w_val)
+            sigA(MLBW_RA_IM, i_pole) = real(ONEI*w_val)
 
             ! Absorption cross section derivative
-            sigF(MP_EA, i_pole) = 1
-            sigF(MLBW_RF, i_pole) = 1
+            r = multipole % data(MLBW_RF, i_pole)
+            sigF(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
+            sigF(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
+            sigF(MLBW_RF_RE, i_pole) = real(w_val)
+            sigF(MLBW_RF_IM, i_pole) = real(ONEI*w_val)
+
           else if (multipole % formalism == FORM_RM) then
             ! Total cross section derivative
-            sigT(MP_EA, i_pole) = 1
-            sigT(RM_RT, i_pole) = 1
+            r = multipole % data(RM_RT, i_pole)
+            sigT(MP_EA_RE, i_pole) = real(-dopp*sigT_factor(multipole % l_value(i_pole))*r*dw_val)
+            sigT(MP_EA_IM, i_pole) = real(-ONEI*sigT_factor(multipole % l_value(i_pole))*dopp*r*dw_val)
+            sigT(RM_RT_RE, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*w_val)
+            sigT(RM_RT_IM, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*ONEI*w_val)
 
             ! Absorption cross section derivative
-            sigA(MP_EA, i_pole) = 1
-            sigA(RM_RA, i_pole) = 1
+            r = multipole % data(RM_RA, i_pole)
+            sigA(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
+            sigA(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
+            sigA(RM_RA_RE, i_pole) = real(w_val)
+            sigA(RM_RA_IM, i_pole) = real(ONEI*w_val)
 
             ! Absorption cross section derivative
-            sigF(MP_EA, i_pole) = 1
-            sigF(RM_RF, i_pole) = 1
+            r = multipole % data(RM_RF, i_pole)
+            sigF(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
+            sigF(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
+            sigF(RM_RF_RE, i_pole) = real(w_val)
+            sigF(RM_RF_IM, i_pole) = real(ONEI*w_val)
           end if
         end do
       end if
@@ -953,7 +972,6 @@ contains
 
     ! ==========================================================================
     ! Bookkeeping
-
     ! Convert to eV.
     E = Emev * 1.0e6_8
     sqrtkT = sqrtkT_ * 1.0e3_8

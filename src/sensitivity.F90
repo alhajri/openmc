@@ -1307,6 +1307,8 @@ contains
     integer :: l
     integer :: m
     integer :: n
+    integer :: r
+    integer :: s
     type(SensitivityObject), pointer :: t
 
     ! Calculate statistics for user-defined tallies
@@ -1320,9 +1322,16 @@ contains
                   t%results(2,k,l,m,n) = sqrt((t%results(2,k,l,m,n)/t%n_realizations - &
                   t%results(1,k,l,m,n)*t%results(1,k,l,m,n))/(t%n_realizations-1))
 
-                  t%poleResults(1,k,l,m,n,:,:) = t%poleResults(1,k,l,m,n,:,:)/t%n_realizations
-                  t%poleResults(2,k,l,m,n,:,:)= sqrt((t%poleResults(2,k,l,m,n,:,:)/t%n_realizations - &
-                  t%poleResults(1,k,l,m,n,:,:)*t%poleResults(1,k,l,m,n,:,:))/(t%n_realizations-1))
+                  !t%poleResults(1,k,l,m,n,:,:) = t%poleResults(1,k,l,m,n,:,:)/t%n_realizations
+                  !t%poleResults(2,k,l,m,n,:,:)= sqrt((t%poleResults(2,k,l,m,n,:,:)/t%n_realizations - &
+                  !t%poleResults(1,k,l,m,n,:,:)*t%poleResults(1,k,l,m,n,:,:))/(t%n_realizations-1))
+                  do r = 1, MAX_PARAMS
+                    do s = 1, MAX_POLES
+                      t%poleResults(1,k,l,m,n,r,s) = t%poleResults(1,k,l,m,n,r,s)/t%n_realizations
+                      t%poleResults(2,k,l,m,n,r,s)= sqrt((t%poleResults(2,k,l,m,n,r,s)/t%n_realizations - &
+                      t%poleResults(1,k,l,m,n,r,s)*t%poleResults(1,k,l,m,n,r,s))/(t%n_realizations-1))
+                    end do
+                  end do
                end do
             end do
          end do

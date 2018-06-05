@@ -1,0 +1,27 @@
+<?xml version="1.0"?>
+<sensitivities>
+
+  <mesh id="1">
+    <type> regular </type>
+    <lower_left>-0.62992 -0.62992 -0.62992</lower_left>
+    <upper_right>0.62992 0.62992 0.62992</upper_right>
+    <dimension>1 1 1</dimension>
+  </mesh>
+
+  <mesh id="2">
+    <type> regular </type>
+    <lower_left>-8.7407 -8.7407 -8.7407</lower_left>
+    <upper_right>8.7407 8.7407 8.7407</upper_right>
+    <dimension>5 5 5</dimension>
+  </mesh>
+
+  <sensitivity id="1">
+    <method> 1 </method>
+    <blocklen> 5 </blocklen>
+    <mesh> 1 </mesh>
+    <energystructure> 1 </energystructure>
+    <nuclides> U235 </nuclides>
+    <scores> fission </scores>
+  </sensitivity>
+
+</sensitivities>

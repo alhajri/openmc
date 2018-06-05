@@ -1,11 +1,18 @@
 <?xml version="1.0"?>
 <settings>
 
+
+  <cross_sections>/home/alhajri/code/gptmc/openmc/data/nndc_hdf5/cross_sections.xml</cross_sections>
+
+  <temperature_method>multipole</temperature_method>
+
+  <multipole_library>/home/alhajri/code/gptmc/openmc/data/wmp</multipole_library>
+
   <!-- Define how many particles to run and for how many batches -->
   <eigenvalue>
     <batches>100</batches>
     <inactive>10</inactive>
-    <particles>1000</particles>
+    <particles>100</particles>
   </eigenvalue>
 
   <!-- The starting source is a uniform distribution over the entire pin
