@@ -811,8 +811,8 @@ contains
                       t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
                       t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value * value
                       ! Loop over multipole parameters
-                      do r = 1, MAX_PARAMS
-                        do s = 1, MAX_POLES
+                      do s = 1, MAX_POLES
+                        do r = 1, MAX_PARAMS
                            poleValue = sum(t%poleNeutrontally(r,s,k,l,m,n,:)*t%neutronvalue(:))/t % denom ! This is a bottleneck
                            t%poleResults(1,r,s,k,l,m,n) = t%poleResults(1,r,s,k,l,m,n) + poleValue
                            t%poleResults(2,r,s,k,l,m,n) = t%poleResults(2,r,s,k,l,m,n) + poleValue * poleValue
@@ -1327,8 +1327,8 @@ contains
                   !t%poleResults(1,k,l,m,n,:,:) = t%poleResults(1,k,l,m,n,:,:)/t%n_realizations
                   !t%poleResults(2,k,l,m,n,:,:)= sqrt((t%poleResults(2,k,l,m,n,:,:)/t%n_realizations - &
                   !t%poleResults(1,k,l,m,n,:,:)*t%poleResults(1,k,l,m,n,:,:))/(t%n_realizations-1))
-                  do r = 1, MAX_PARAMS
-                    do s = 1, MAX_POLES
+                  do s = 1, MAX_POLES
+                    do r = 1, MAX_PARAMS
                       t%poleResults(1,r,s,k,l,m,n) = t%poleResults(1,r,s,k,l,m,n)/t%n_realizations
                       t%poleResults(2,r,s,k,l,m,n)= sqrt((t%poleResults(2,r,s,k,l,m,n)/t%n_realizations - &
                       t%poleResults(1,r,s,k,l,m,n)*t%poleResults(1,r,s,k,l,m,n))/(t%n_realizations-1))
