@@ -259,10 +259,10 @@ contains
         end select
       end associate
 
-      t % poleCumtally(next_bin_nuclide, next_bin_score, &
-          next_bin_mesh, next_bin_energy, :, :) = &
-      t % poleCumtally(next_bin_nuclide, next_bin_score, &
-          next_bin_mesh, next_bin_energy, :, :) + poleScore
+      t % poleCumtally(:,:,next_bin_nuclide, next_bin_score, &
+          next_bin_mesh, next_bin_energy) = &
+      t % poleCumtally(:,:,next_bin_nuclide, next_bin_score, &
+          next_bin_mesh, next_bin_energy) + poleScore
 
     end do SENSITIVITY_LOOP
 
@@ -418,10 +418,10 @@ contains
         end select
       end associate
 
-       t % poleNeutrontally(progenitornum, next_bin_nuclide, next_bin_score, &
-           next_bin_mesh, next_bin_energy, :, :) = &
-       t % poleNeutrontally(progenitornum, next_bin_nuclide, next_bin_score, &
-           next_bin_mesh, next_bin_energy, :, :) + poleScore
+       t % poleNeutrontally(:,:,next_bin_nuclide, next_bin_score, &
+           next_bin_mesh, next_bin_energy,progenitornum) = &
+       t % poleNeutrontally(:,:,next_bin_nuclide, next_bin_score, &
+           next_bin_mesh, next_bin_energy,progenitornum) + poleScore
 
     end do SENSITIVITY_LOOP
 
@@ -574,8 +574,8 @@ contains
        ! Get index of tally and pointer to tally
        t => sensitivities(i)
        if (t % method == 1) then
-          t % neutrontally(progenitornum,:,:,:,:) = t % cumtally(:,:,:,:)
-          t % poleNeutrontally(progenitornum,:,:,:,:,:,:) = t % poleCumtally(:,:,:,:,:,:)
+          t % neutrontally(:,:,:,:,progenitornum) = t % cumtally(:,:,:,:)
+          t % poleNeutrontally(:,:,:,:,:,:,progenitornum) = t % poleCumtally(:,:,:,:,:,:)
        end if
      end do SENSITIVITY_LOOP
 
@@ -595,7 +595,8 @@ contains
      SENSITIVITY_LOOP: do i = 1, n_sens
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
-        t % secondtally(p % n_secondary,:,:,:,:) = t % cumtally(:,:,:,:)
+        t % secondtally(:,:,:,:,p % n_secondary) = t % cumtally(:,:,:,:)
+        t % poleSecondtally(:,:,:,:,:,:,p % n_secondary) = t % poleCumtally(:,:,:,:,:,:)
       end do SENSITIVITY_LOOP
   end subroutine tally_cumtosecondary
 
@@ -613,7 +614,8 @@ contains
      SENSITIVITY_LOOP: do i = 1, n_sens
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
-        t % cumtally(:,:,:,:) = t % secondtally(p % n_secondary,:,:,:,:)
+        t % cumtally(:,:,:,:) = t % secondtally(:,:,:,:,p % n_secondary)
+        t % poleCumtally(:,:,:,:,:,:) = t % poleSecondtally(:,:,:,:,:,:,p % n_secondary)
       end do SENSITIVITY_LOOP
   end subroutine tally_secondarytocum
 
@@ -805,15 +807,15 @@ contains
              do l = 1, t % n_score_bins
                 do m = 1, t % n_mesh_bins
                    do n = 1, t % n_energy_bins
-                      value = sum(t%neutrontally(:,k,l,m,n)*t%neutronvalue(:))/t % denom
+                      value = sum(t%neutrontally(k,l,m,n,:)*t%neutronvalue(:))/t % denom
                       t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
                       t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value * value
                       ! Loop over multipole parameters
                       do r = 1, MAX_PARAMS
                         do s = 1, MAX_POLES
-                           poleValue = sum(t%poleNeutrontally(:,k,l,m,n,r,s)*t%neutronvalue(:))/t % denom
-                           t%poleResults(1,k,l,m,n,r,s) = t%poleResults(1,k,l,m,n,r,s) + poleValue
-                           t%poleResults(2,k,l,m,n,r,s) = t%poleResults(2,k,l,m,n,r,s) + poleValue * poleValue
+                           poleValue = sum(t%poleNeutrontally(r,s,k,l,m,n,:)*t%neutronvalue(:))/t % denom ! This is a bottleneck
+                           t%poleResults(1,r,s,k,l,m,n) = t%poleResults(1,r,s,k,l,m,n) + poleValue
+                           t%poleResults(2,r,s,k,l,m,n) = t%poleResults(2,r,s,k,l,m,n) + poleValue * poleValue
                         end do
                       end do
                    end do
@@ -1327,9 +1329,9 @@ contains
                   !t%poleResults(1,k,l,m,n,:,:)*t%poleResults(1,k,l,m,n,:,:))/(t%n_realizations-1))
                   do r = 1, MAX_PARAMS
                     do s = 1, MAX_POLES
-                      t%poleResults(1,k,l,m,n,r,s) = t%poleResults(1,k,l,m,n,r,s)/t%n_realizations
-                      t%poleResults(2,k,l,m,n,r,s)= sqrt((t%poleResults(2,k,l,m,n,r,s)/t%n_realizations - &
-                      t%poleResults(1,k,l,m,n,r,s)*t%poleResults(1,k,l,m,n,r,s))/(t%n_realizations-1))
+                      t%poleResults(1,r,s,k,l,m,n) = t%poleResults(1,r,s,k,l,m,n)/t%n_realizations
+                      t%poleResults(2,r,s,k,l,m,n)= sqrt((t%poleResults(2,r,s,k,l,m,n)/t%n_realizations - &
+                      t%poleResults(1,r,s,k,l,m,n)*t%poleResults(1,r,s,k,l,m,n))/(t%n_realizations-1))
                     end do
                   end do
                end do
@@ -1676,8 +1678,8 @@ contains
       t % cumtally(bin_nuclide, i, bin_mesh, bin_energy) = &
       t % cumtally(bin_nuclide, i, bin_mesh, bin_energy) - score
 
-      t % poleCumtally(bin_nuclide, i, bin_mesh, bin_energy,:,:) = &
-      t % poleCumtally(bin_nuclide, i, bin_mesh, bin_energy,:,:) - poleScore
+      t % poleCumtally(:,:,bin_nuclide, i, bin_mesh, bin_energy) = &
+      t % poleCumtally(:,:,bin_nuclide, i, bin_mesh, bin_energy) - poleScore
 
     end do SCORE_LOOP
 

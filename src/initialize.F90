@@ -835,17 +835,17 @@ contains
               t % n_score_bins, t % n_mesh_bins, t % n_energy_bins))
 
       ! Set the size to "max" number of poles
-      allocate(t % poleResults(3, t % n_nuclide_bins, &
-              t % n_score_bins, t % n_mesh_bins, t % n_energy_bins,MAX_PARAMS,MAX_POLES))
+      allocate(t % poleResults(3,MAX_PARAMS,MAX_POLES, t % n_nuclide_bins, &
+              t % n_score_bins, t % n_mesh_bins, t % n_energy_bins))
 
       ! if method == 1, i.e. IFP method, allocate more memory * 3
       if (t % method == 1) then
-         allocate(t % neutrontally(3 * n_particles, &
-                  t % n_nuclide_bins, t % n_score_bins, &
-                  t % n_mesh_bins, t % n_energy_bins))
-         allocate(t % secondtally(MAX_SECONDARY, &
-                  t % n_nuclide_bins, t % n_score_bins, &
-                  t % n_mesh_bins, t % n_energy_bins))
+         allocate(t % neutrontally(t % n_nuclide_bins, &
+                   t % n_score_bins, t % n_mesh_bins, &
+                  t % n_energy_bins, 3 * n_particles))
+         allocate(t % secondtally(t % n_nuclide_bins, &
+                   t % n_score_bins, t % n_mesh_bins, &
+                  t % n_energy_bins, MAX_SECONDARY))
          allocate(t % cumtally(t % n_nuclide_bins, t % n_score_bins, &
                   t % n_mesh_bins, t % n_energy_bins))
          allocate(t % neutronvalue(3 * n_particles))
@@ -857,14 +857,13 @@ contains
          t % neutronvalue   = ZERO
          t % neutronfission = ZERO
          ! Multipole sensitivity data structures
-         allocate(t % poleNeutrontally(3 * n_particles, &
-                  t % n_nuclide_bins, t % n_score_bins, &
-                  t % n_mesh_bins, t % n_energy_bins, MAX_PARAMS,MAX_POLES))
-         allocate(t % poleSecondtally(MAX_SECONDARY, &
-                  t % n_nuclide_bins, t % n_score_bins, &
-                  t % n_mesh_bins, t % n_energy_bins, MAX_PARAMS,MAX_POLES))
-         allocate(t % poleCumtally(t % n_nuclide_bins, t % n_score_bins, &
-                  t % n_mesh_bins, t % n_energy_bins, MAX_PARAMS,MAX_POLES))
+         allocate(t % poleNeutrontally(MAX_PARAMS, MAX_POLES, t % n_nuclide_bins, &
+                   t % n_score_bins, t % n_mesh_bins,  &
+                  t % n_energy_bins,  3 * n_particles))
+         allocate(t % poleSecondtally(MAX_PARAMS,MAX_POLES,t % n_nuclide_bins, t % n_score_bins, &
+                  t % n_mesh_bins, t % n_energy_bins,  MAX_SECONDARY))
+         allocate(t % poleCumtally(MAX_PARAMS,MAX_POLES,t % n_nuclide_bins, t % n_score_bins, &
+                  t % n_mesh_bins, t % n_energy_bins))
         t % poleResults      = ZERO
         t % poleCumtally     = ZERO
         t % poleSecondtally  = ZERO
