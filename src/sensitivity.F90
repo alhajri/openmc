@@ -379,10 +379,10 @@ contains
 
        if (next_bin_score == 0) cycle SENSITIVITY_LOOP
 
-       t % neutrontally(progenitornum, next_bin_nuclide, next_bin_score, &
-           next_bin_mesh, next_bin_energy) = &
-       t % neutrontally(progenitornum, next_bin_nuclide, next_bin_score, &
-           next_bin_mesh, next_bin_energy) + 1
+       t % neutrontally( next_bin_nuclide, next_bin_score, &
+           next_bin_mesh, next_bin_energy, progenitornum) = &
+       t % neutrontally(next_bin_nuclide, next_bin_score, &
+           next_bin_mesh, next_bin_energy, progenitornum) + 1
 
       ! Determine which derivative to use:
       associate (nuc => nuclides(i_nuclide))
