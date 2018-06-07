@@ -678,9 +678,9 @@ contains
     endw = multipole % w_end(i_window)
 
     ! Fill in factors.
-    !if (startw <= endw) then
-    !  call compute_sigT_factor(multipole, sqrtE, sigT_factor)
-    !end if
+    if (startw <= endw) then
+      call compute_sigT_factor(multipole, sqrtE, sigT_factor)
+    end if
 
     ! Initialize the ouptut cross section derivatives.
     sigT = ZERO
@@ -773,7 +773,7 @@ contains
             sigA(MLBW_RA_RE, i_pole) = real(w_val)
             sigA(MLBW_RA_IM, i_pole) = real(ONEI*w_val)
 
-            ! Absorption cross section derivative
+            ! Fission cross section derivative
             r = multipole % data(MLBW_RF, i_pole)
             sigF(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
             sigF(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
@@ -795,7 +795,7 @@ contains
             sigA(RM_RA_RE, i_pole) = real(w_val)
             sigA(RM_RA_IM, i_pole) = real(ONEI*w_val)
 
-            ! Absorption cross section derivative
+            ! Fission cross section derivative
             r = multipole % data(RM_RF, i_pole)
             sigF(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
             sigF(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
