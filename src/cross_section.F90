@@ -236,12 +236,12 @@ contains
           nuc % RRR = 1
 
           ! These values may need to be normalized by the cross section...
-          nuc % sigT_derivative = dsigT
-          nuc % sigA_derivative = dsigA
-          nuc % sigElastic_derivative = dsigT-dsigA
+          nuc % sigT_derivative = dsigT !/ sigT
+          nuc % sigA_derivative = dsigA !/ sigA
+          nuc % sigElastic_derivative = (dsigT-dsigA) !/ (sigT-sigA)
 
           if (nuc % fissionable) then
-            nuc % sigF_derivative = dsigF
+            nuc % sigF_derivative = dsigF !/ sigF
           else
             nuc % sigF_derivative = ZERO
           end if
