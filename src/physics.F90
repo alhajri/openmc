@@ -41,11 +41,6 @@ contains
 
     type(Particle), intent(inout) :: p
 
-    ! Store pre-collision particle properties
-    p % last_wgt = p % wgt
-    p % last_E   = p % E
-    p % last_uvw = p % coord(1) % uvw
-
     !print *, "Energy before sampling a reaction = ", p % E
 
     ! Add to collision counter for particle
@@ -107,7 +102,7 @@ contains
     ! absorption (including fission)
 
     if (nuc % fissionable) then
-      call sample_fission(i_nuclide, i_reaction)
+      call sample_fission(i_nuclide, p % E, i_reaction)
       if (run_mode == MODE_EIGENVALUE) then
         call create_fission_sites(p, i_nuclide, i_reaction, fission_bank, n_bank)
       elseif (run_mode == MODE_FIXEDSOURCE) then
@@ -205,8 +200,9 @@ contains
 ! SAMPLE_FISSION
 !===============================================================================
 
-  subroutine sample_fission(i_nuclide, i_reaction)
+  subroutine sample_fission(i_nuclide, E, i_reaction)
     integer, intent(in)  :: i_nuclide  ! index in nuclides array
+    real(8), intent(in)  :: E          ! incident neutron energy
     integer, intent(out) :: i_reaction ! index in nuc % reactions array
 
     integer :: i
@@ -223,11 +219,20 @@ contains
     ! If we're in the URR, by default use the first fission reaction. We also
     ! default to the first reaction if we know that there are no partial fission
     ! reactions
-
     if (micro_xs(i_nuclide) % use_ptable .or. &
          .not. nuc % has_partial_fission) then
       i_reaction = nuc % index_fission(1)
       return
+    end if
+
+    ! Check to see if we are in a windowed multipole range.  WMP only supports
+    ! the first fission reaction.
+    if (nuc % mp_present) then
+      if (E >= nuc % multipole % start_E/1.0e6_8 .and. &
+           E <= nuc % multipole % end_E/1.0e6_8) then
+        i_reaction = nuc % index_fission(1)
+        return
+      end if
     end if
 
     ! Get grid index and interpolatoin factor and sample fission cdf

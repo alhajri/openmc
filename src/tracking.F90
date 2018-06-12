@@ -70,6 +70,12 @@ contains
     endif
 
     EVENT_LOOP: do
+      ! Store pre-collision particle properties
+      p % last_wgt = p % wgt
+      p % last_E   = p % E
+      p % last_uvw = p % coord(1) % uvw
+      p % last_xyz = p % coord(1) % xyz
+
       ! If the cell hasn't been determined based on the particle's location,
       ! initiate a search for the current cell. This generally happens at the
       ! beginning of the history and again for any secondary particles
@@ -293,7 +299,7 @@ contains
              if (adjointmethod == 4 .AND. original) call tally_secondarytocum(p)
              if (adjointmethod == 5 .AND. clutch_first) call tally_secondarytocum(p)
              if (adjointmethod == 6 .AND. clutch_first) call tally_secondarytocum(p)
-          end if  
+          end if
           p % n_secondary = p % n_secondary - 1
           n_event = 0
 

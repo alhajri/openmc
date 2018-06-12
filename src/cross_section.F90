@@ -225,15 +225,14 @@ contains
         ! 4. cross_section.F90 - calculate_urr_xs - For unresolved purposes.
         ! It is worth noting that none of these occur in the resolved
         ! resonance range, so the value here does not matter.
-        micro_xs(i_nuclide) % index_temp    = i_temp
+        micro_xs(i_nuclide) % index_temp    = -1
         micro_xs(i_nuclide) % index_grid    = 0
         micro_xs(i_nuclide) % interp_factor = ZERO
 
         ! Calculate the cross section derivatives
         if (nuc % calculate_derivative) then
-          call wmp_deriv_eval(nuc % multipole, E, sqrtkT, dsigT, dsigA, dsigF)
-
           nuc % RRR = 1
+          call wmp_deriv_eval(nuc % multipole, E, sqrtkT, dsigT, dsigA, dsigF)
 
           ! These values may need to be normalized by the cross section...
           nuc % sigT_derivative = dsigT !/ sigT
@@ -377,9 +376,13 @@ contains
       end do
 
       ! Randomly sample between temperature i and i+1
-      f = (kT - sab_tables(i_sab) % kTs(i_temp)) / &
-           (sab_tables(i_sab) % kTs(i_temp + 1) - sab_tables(i_sab) % kTs(i_temp))
-      if (f > prn()) i_temp = i_temp + 1
+      if (size(sab_tables(i_sab) % kTs) == 1) then
+        i_temp = 1
+      else
+        f = (kT - sab_tables(i_sab) % kTs(i_temp)) / &
+            (sab_tables(i_sab) % kTs(i_temp + 1) - sab_tables(i_sab) % kTs(i_temp))
+        if (f > prn()) i_temp = i_temp + 1
+      end if
     end if
 
 
