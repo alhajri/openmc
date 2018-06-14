@@ -168,6 +168,27 @@ contains
            // " specified on sensitivity " // trim(to_str(t % id)))
       end if
 
+     ! ======================================================================
+     ! Score logic,  to check if the score is in the
+     ! sensitivity tally list
+      SCORE_BIN_LOOP: do j = 1, t % n_score_bins
+
+         ! determine what type of score bin
+         i_score_sen = t % score_bins(j)
+
+         ! the reaction type is in the sensitivity tally list
+         if (i_score_sen == mt_number) then
+
+            next_bin_score = j
+
+            exit SCORE_BIN_LOOP
+
+          end if
+
+      end do SCORE_BIN_LOOP
+
+      if (next_bin_score == 0) cycle SENSITIVITY_LOOP
+
       ! ======================================================================
       ! Mesh logic
       call get_mesh_bin(m, p % coord(1) % xyz, next_bin_mesh)
@@ -199,27 +220,6 @@ contains
        end do NUCLIDE_BIN_LOOP
 
        if (next_bin_nuclide == 0) cycle SENSITIVITY_LOOP
-
-      ! ======================================================================
-      ! Score logic,  to check if the score is in the
-      ! sensitivity tally list
-       SCORE_BIN_LOOP: do j = 1, t % n_score_bins
-
-          ! determine what type of score bin
-          i_score_sen = t % score_bins(j)
-
-          ! the reaction type is in the sensitivity tally list
-          if (i_score_sen == mt_number) then
-
-             next_bin_score = j
-
-             exit SCORE_BIN_LOOP
-
-           end if
-
-       end do SCORE_BIN_LOOP
-
-       if (next_bin_score == 0) cycle SENSITIVITY_LOOP
 
        t % cumtally(next_bin_nuclide, next_bin_score, &
            next_bin_mesh, next_bin_energy) = &
@@ -321,6 +321,27 @@ contains
            // " specified on sensitivity " // trim(to_str(t % id)))
       end if
 
+     ! ======================================================================
+     ! Score logic,  to check if the score is in the
+     ! sensitivity tally list
+      SCORE_BIN_LOOP: do j = 1, t % n_score_bins
+
+         ! determine what type of score bin
+         i_score_sen = t % score_bins(j)
+
+         ! the reaction type is in the sensitivity tally list
+         if (i_score_sen == mt_number) then
+
+            next_bin_score = j
+
+            exit SCORE_BIN_LOOP
+
+          end if
+
+      end do SCORE_BIN_LOOP
+
+      if (next_bin_score == 0) cycle SENSITIVITY_LOOP
+
       ! ======================================================================
       ! Mesh logic
       call get_mesh_bin(m, p % coord(1) % xyz, next_bin_mesh)
@@ -357,27 +378,6 @@ contains
        end do NUCLIDE_BIN_LOOP
 
        if (next_bin_nuclide == 0) cycle SENSITIVITY_LOOP
-
-      ! ======================================================================
-      ! Score logic,  to check if the score is in the
-      ! sensitivity tally list
-       SCORE_BIN_LOOP: do j = 1, t % n_score_bins
-
-          ! determine what type of score bin
-          i_score_sen = t % score_bins(j)
-
-          ! the reaction type is in the sensitivity tally list
-          if (i_score_sen == mt_number) then
-
-             next_bin_score = j
-
-             exit SCORE_BIN_LOOP
-
-           end if
-
-       end do SCORE_BIN_LOOP
-
-       if (next_bin_score == 0) cycle SENSITIVITY_LOOP
 
        t % neutrontally( next_bin_nuclide, next_bin_score, &
            next_bin_mesh, next_bin_energy, progenitornum) = &
@@ -731,6 +731,7 @@ contains
       integer :: n1        ! total size of count variable neutrontally
       integer :: n2        ! total size of count variable neutronfission
       integer :: n3        ! total size of count variable neutronvalue
+      integer :: n4        ! total size of count variable poleNeutrontally
       real(8) :: dummy     ! temporary receive buffer for non-root reductions
 
       ! A loop over all sensitivities is necessary
@@ -742,6 +743,8 @@ contains
                  t % n_mesh_bins * t % n_energy_bins
             n2 = 3 * n_particles
             n3 = 3 * n_particles
+            n4 = MAX_POLES * MAX_PARAMS * t % n_nuclide_bins * t % n_score_bins * &
+                 t % n_mesh_bins * t % n_energy_bins
          end if
          if (t % method == 2) then
             n1 = 3 * n_particles * t % imp_mesh_bins
@@ -756,6 +759,8 @@ contains
                 MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
            call MPI_REDUCE(MPI_IN_PLACE, t % neutronvalue, n3, MPI_REAL8, &
                 MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+           call MPI_REDUCE(MPI_IN_PLACE, t % poleNeutrontally, n4, MPI_REAL8, &
+                MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
          else
            ! Receive buffer not significant at other processors
            call MPI_REDUCE(t % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
@@ -763,6 +768,8 @@ contains
            call MPI_REDUCE(t % neutronfission, dummy, n2, MPI_REAL8, MPI_SUM, 0, &
                 MPI_COMM_WORLD, mpi_err)
            call MPI_REDUCE(t % neutronvalue, dummy, n3, MPI_REAL8, MPI_SUM, 0, &
+                MPI_COMM_WORLD, mpi_err)
+           call MPI_REDUCE(t % poleNeutrontally, dummy, n4, MPI_REAL8, MPI_SUM, 0, &
                 MPI_COMM_WORLD, mpi_err)
          end if
       end do SENSITIVITY_LOOP
@@ -790,6 +797,11 @@ contains
      integer :: r
      integer :: s
 
+     real(8), allocatable :: Cneutrontally(:,:,:,:,:)
+     !real(8), allocatable :: CpoleNeutrontally(:,:,:,:,:,:,:)
+     integer(8) :: n_particles8 , n_score_bins8, n_mesh_bins8, n_energy_bins8, &
+                   n_nuclide_bins8!, MAX_PARAMS8, MAX_POLES8
+
      call collect_ifpcal()
 
      if (master) then
@@ -799,21 +811,49 @@ contains
           t => sensitivities(i)
           t % n_realizations = t % n_realizations + 1
           t % denom = 0
+
+          ! Need INT8 to perform reshaping.
+          n_particles8 = 3 * n_particles
+          n_score_bins8 =   t % n_score_bins
+          n_mesh_bins8 =    t % n_mesh_bins
+          n_energy_bins8 =    t % n_energy_bins
+          n_nuclide_bins8 =    t % n_nuclide_bins
+          !MAX_PARAMS8 =    MAX_PARAMS
+          !MAX_POLES8 =    MAX_POLES
+
+          allocate(Cneutrontally(3 * n_particles, t % n_nuclide_bins, &
+                   t % n_score_bins, t % n_mesh_bins, &
+                   t % n_energy_bins))
+
+          !allocate(CpoleNeutrontally(3 * n_particles, MAX_PARAMS, MAX_POLES, &
+          !                  t % n_score_bins, t % n_mesh_bins, &
+          !                  t % n_energy_bins, t % n_nuclide_bins))
+
+          ! Reshape arrays to speed up loop
+          Cneutrontally = RESHAPE(t % neutrontally, (/ n_particles8, n_nuclide_bins8, &
+                n_score_bins8, n_mesh_bins8, &
+                n_energy_bins8/), ORDER=(/5,1,2,3,4/))
+
+          !CpoleNeutrontally = RESHAPE(t % poleNeutrontally, (/ n_particles8, MAX_PARAMS8, MAX_POLES8, &
+          !        n_score_bins8, n_mesh_bins8, &
+          !        n_energy_bins8, n_nuclide_bins8/), ORDER=(/7,1,2,3,4,5,6/))
+
           do j = 1, 3 * n_particles
              t % denom = t % denom + t % neutronfission(j) * t % neutronvalue(j)
           end do
 
-          do k = 1, t % n_nuclide_bins
-             do l = 1, t % n_score_bins
-                do m = 1, t % n_mesh_bins
-                   do n = 1, t % n_energy_bins
-                      value = sum(t%neutrontally(k,l,m,n,:)*t%neutronvalue(:))/t % denom
+          do n = 1, t % n_energy_bins
+             do m = 1, t % n_mesh_bins
+                do l = 1, t % n_score_bins
+                   do k = 1, t % n_nuclide_bins
+                      value = sum(Cneutrontally(:,k,l,m,n)*t%neutronvalue(:))/t % denom
                       t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
                       t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value * value
                       ! Loop over multipole parameters
                       do s = 1, MAX_POLES
                         do r = 1, MAX_PARAMS
-                           poleValue = sum(t%poleNeutrontally(r,s,k,l,m,n,:)*t%neutronvalue(:))/t % denom ! This is a bottleneck
+                           !poleValue = sum(CpoleNeutrontally(:,r,s,k,l,m,n)*t%neutronvalue(:))/t % denom
+                           poleValue = sum(t%poleNeutrontally(r,s,k,l,m,n,:)*t%neutronvalue(:))/t % denom
                            t%poleResults(1,r,s,k,l,m,n) = t%poleResults(1,r,s,k,l,m,n) + poleValue
                            t%poleResults(2,r,s,k,l,m,n) = t%poleResults(2,r,s,k,l,m,n) + poleValue * poleValue
                         end do
@@ -822,6 +862,8 @@ contains
                 end do
              end do
           end do
+          deallocate( Cneutrontally)
+          !deallocate( CpoleNeutrontally)
        end do SENSITIVITY_LOOP
      end if
 
