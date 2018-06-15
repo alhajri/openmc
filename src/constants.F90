@@ -58,8 +58,8 @@ module constants
   real(8), parameter :: EXTSRC_REJECT_FRACTION = 0.05
 
   ! Adjustable sizes for the multipole parameter derivatives
-  integer, parameter :: MAX_POLES  = 4000
-  integer, parameter :: MAX_PARAMS = 10
+  integer, parameter :: MAX_POLES  = 3200
+  integer, parameter :: MAX_PARAMS = 8
 
   ! ============================================================================
   ! PHYSICAL CONSTANTS

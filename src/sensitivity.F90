@@ -646,6 +646,7 @@ contains
            ! Get index of tally and pointer to tally
            t => sensitivities(i)
            t % neutrontally   = 0
+           t % poleNeutrontally   = 0
            t % neutronvalue   = 0
            if (adjointmethod /= 4) then
               t % neutronfission = 0
@@ -710,8 +711,10 @@ contains
      SENSITIVITY_LOOP: do i = 1, n_sens
         ! Get index of tally and pointer to tally
         t => sensitivities(i)
-        t % cumtally = 0
-        t % secondtally = 0
+        t % cumtally = ZERO
+        t % secondtally = ZERO
+        t % poleCumtally = ZERO
+        t % poleSecondtally = ZERO
         !t % secondtally(1:maxsecondnum,:,:,:,:) = 0
       end do SENSITIVITY_LOOP
       maxsecondnum  = 0
