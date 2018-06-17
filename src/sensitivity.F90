@@ -19,6 +19,8 @@ module sensitivity
 
   implicit none
   integer :: position(N_FILTER_TYPES - 3) = 0 ! Tally map positioning array
+  !real(8) :: dummy1(MAX_POLES*MAX_PARAMS) ! Tally map positioning array
+  !real(8) :: dummy2(MAX_POLES*MAX_PARAMS) ! Tally map positioning array
 
 contains
 
@@ -715,6 +717,8 @@ contains
         t % secondtally = ZERO
         t % poleCumtally = ZERO
         t % poleSecondtally = ZERO
+        !dummy1 = ZERO
+        !dummy2 = ZERO
         !t % secondtally(1:maxsecondnum,:,:,:,:) = 0
       end do SENSITIVITY_LOOP
       maxsecondnum  = 0

@@ -232,7 +232,7 @@ contains
         ! Calculate the cross section derivatives
         if (nuc % calculate_derivative) then
           nuc % RRR = 1
-          call wmp_deriv_eval(nuc % multipole, E, sqrtkT, dsigT, dsigA, dsigF)
+          call wmp_deriv_eval_subset(nuc % multipole, E, sqrtkT, dsigT, dsigA, dsigF)
 
           ! These values may need to be normalized by the cross section...
           nuc % sigT_derivative = dsigT / sigT
@@ -809,6 +809,196 @@ contains
       end if
     end if
   end subroutine wmp_deriv_eval
+
+!===============================================================================
+! WMP_DERIV_EVAL_SUBSET evaluates the derivative of the cross sections in the resolved
+! resonance regions with respect to the windowed multipole parameters
+!===============================================================================
+
+  subroutine wmp_deriv_eval_subset(multipole, Emev, sqrtkT_, sigT, sigA, sigF)
+    type(MultipoleArray), intent(in) :: multipole ! The windowed multipole
+                                                  !  object to process.
+    real(8), intent(in)              :: Emev      ! The energy at which to
+                                                  !  evaluate the cross section
+                                                  !  in MeV
+    real(8), intent(in)              :: sqrtkT_   ! The temperature in the form
+                                                  !  sqrt(kT (in MeV)), at which
+                                                  !  to evaluate the XS.
+    real(8), intent(out)             :: sigT(MAX_PARAMS,MAX_POLES)       ! Total cross section
+    real(8), intent(out)             :: sigA(MAX_PARAMS,MAX_POLES)       ! Absorption cross section
+    real(8), intent(out)             :: sigF(MAX_PARAMS,MAX_POLES)       ! Fission cross section
+    complex(8) :: psi_chi  ! The value of the psi-chi function for the
+                           !  asymptotic form
+    complex(8) :: c_temp   ! complex temporary variable
+    complex(8) :: w_val    ! The faddeeva function evaluated at Z
+    complex(8) :: dw_val
+    complex(8) :: Z        ! sqrt(atomic weight ratio / kT) * (sqrt(E) - pole)
+    complex(8) :: sigT_factor(multipole % num_l)
+    complex(8) :: p        ! pole
+    complex(8) :: r        ! residue
+    complex(8) :: rx       ! residue competitive
+    !real(8) :: broadened_polynomials(multipole % fit_order + 1)
+    real(8) :: sqrtE       ! sqrt(E), eV
+    real(8) :: invE        ! 1/E, eV
+    real(8) :: dopp        ! sqrt(atomic weight ratio / kT) = 1 / (2 sqrt(xi))
+    real(8) :: temp        ! real temporary value
+    real(8) :: E           ! energy, eV
+    real(8) :: sqrtkT      ! sqrt(kT (in eV))
+    integer :: i_pole      ! index of pole
+    integer :: i_poly      ! index of curvefit
+    integer :: i_window    ! index of window
+    integer :: startw      ! window start pointer (for poles)
+    integer :: endw        ! window end pointer
+
+    ! ==========================================================================
+    ! Bookkeeping
+
+    ! Convert to eV.
+    E = Emev * 1.0e6_8
+    sqrtkT = sqrtkT_ * 1.0e3_8
+
+    !print *, "mulipole derivative calculated at E = ", E
+
+    ! Define some frequently used variables.
+    sqrtE = sqrt(E)
+    invE = ONE / E
+    dopp = multipole % sqrtAWR / sqrtkT
+
+    ! Locate us.
+    i_window = floor((sqrtE - sqrt(multipole % start_E)) / multipole % spacing &
+         + ONE)
+    startw = multipole % w_start(i_window)
+    endw = multipole % w_end(i_window)
+
+    ! Fill in factors.
+    if (startw <= endw) then
+      call compute_sigT_factor(multipole, sqrtE, sigT_factor)
+    end if
+
+    ! Initialize the ouptut cross section derivatives.
+    sigT = ZERO
+    sigA = ZERO
+    sigF = ZERO
+
+    ! ==========================================================================
+    ! Evaluate the derivatives of the poles in this window.
+
+    if (sqrtkT == ZERO) then
+      ! If at 0K, use asymptotic form.
+      do i_pole = START_POLE, (START_POLE + MAX_POLES)
+        psi_chi = -ONEI / (multipole % data(MP_EA, i_pole) - sqrtE)
+        c_temp = psi_chi / E
+        p = multipole % data(MP_EA, i_pole)
+        if (multipole % formalism == FORM_MLBW) then
+          ! Total cross section derivative
+          r = multipole % data(MLBW_RT, i_pole)
+          rx = multipole % data(MLBW_RX, i_pole)
+          sigT(MP_EA_RE, i_pole) = real(invE*ONEI*sigT_factor(multipole % l_value(i_pole))*r/((p-sqrtE)**2)) &
+                                  + real(invE*ONEI*rx/((p-sqrtE)**2))
+          sigT(MP_EA_IM, i_pole) = real(-invE*sigT_factor(multipole % l_value(i_pole))*r/((p-sqrtE)**2)) &
+                                  + real(-invE*rx/((p-sqrtE)**2))
+          sigT(MLBW_RT_RE, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*c_temp)
+          sigT(MLBW_RT_IM, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*ONEI*c_temp)
+          sigT(MLBW_RX_RE, i_pole) = real(c_temp)
+          sigT(MLBW_RX_IM, i_pole) = real(ONEI*c_temp)
+
+          ! Absorption cross section derivative
+          r = multipole % data(MLBW_RA, i_pole)
+          sigA(MP_EA_RE, i_pole) = real(invE*ONEI*r/((p-sqrtE)**2))
+          sigA(MP_EA_IM, i_pole) = real(-invE*r/((p-sqrtE)**2))
+          sigA(MLBW_RA_RE, i_pole) = real(c_temp)
+          sigA(MLBW_RA_IM, i_pole) = real(ONEI*c_temp)
+
+          ! Absorption cross section derivative
+          r = multipole % data(MLBW_RF, i_pole)
+          sigF(MP_EA_RE, i_pole) = real(invE*ONEI*r/((p-sqrtE)**2))
+          sigF(MP_EA_IM, i_pole) = real(-invE*r/((p-sqrtE)**2))
+          sigF(MLBW_RF_RE, i_pole) = real(c_temp)
+          sigF(MLBW_RF_IM, i_pole) = real(ONEI*c_temp)
+
+        else if (multipole % formalism == FORM_RM) then
+          ! Total cross section derivative
+          r = multipole % data(RM_RT, i_pole)
+          sigT(MP_EA_RE, i_pole) = real(invE*ONEI*sigT_factor(multipole % l_value(i_pole))*r/((p-sqrtE)**2))
+          sigT(MP_EA_IM, i_pole) = real(-invE*sigT_factor(multipole % l_value(i_pole))*r/((p-sqrtE)**2))
+          sigT(RM_RT_RE, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*c_temp)
+          sigT(RM_RT_IM, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*ONEI*c_temp)
+
+          ! Absorption cross section derivative
+          r = multipole % data(RM_RA, i_pole)
+          sigA(MP_EA_RE, i_pole) = real(invE*ONEI*r/((p-sqrtE)**2))
+          sigA(MP_EA_IM, i_pole) = real(-invE*r/((p-sqrtE)**2))
+          sigA(RM_RA_RE, i_pole) = real(c_temp)
+          sigA(RM_RA_IM, i_pole) = real(ONEI*c_temp)
+
+          ! Absorption cross section derivative
+          r = multipole % data(RM_RF, i_pole)
+          sigF(MP_EA_RE, i_pole) = real(invE*ONEI*r/((p-sqrtE)**2))
+          sigF(MP_EA_IM, i_pole) = real(-invE*r/((p-sqrtE)**2))
+          sigF(RM_RF_RE, i_pole) = real(c_temp)
+          sigF(RM_RF_IM, i_pole) = real(ONEI*c_temp)
+        end if
+      end do
+    else
+      ! At temperature, use Faddeeva function-based form.
+      if (endw >= startw) then
+        do i_pole = START_POLE, (START_POLE + MAX_POLES)
+          Z = (sqrtE - multipole % data(MP_EA, i_pole)) * dopp
+          w_val = faddeeva(Z) * dopp * invE * SQRT_PI
+          dw_val = w_derivative(Z,1)* dopp * invE * SQRT_PI
+          if (multipole % formalism == FORM_MLBW) then
+            ! Total cross section derivative
+            r = multipole % data(MLBW_RT, i_pole)
+            rx = multipole % data(MLBW_RX, i_pole)
+            sigT(MP_EA_RE, i_pole) = real(-dopp*sigT_factor(multipole % l_value(i_pole))*r*dw_val) &
+                                  - real(-dopp*rx*dw_val)
+            sigT(MP_EA_IM, i_pole) = real(-ONEI*sigT_factor(multipole % l_value(i_pole))*dopp*r*dw_val) &
+                                  - real(-ONEI*dopp*rx*dw_val)
+            sigT(MLBW_RT_RE, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*w_val)
+            sigT(MLBW_RT_IM, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*ONEI*w_val)
+            sigT(MLBW_RX_RE, i_pole) = real(w_val)
+            sigT(MLBW_RX_IM, i_pole) = real(ONEI*w_val)
+
+            ! Absorption cross section derivative
+            r = multipole % data(MLBW_RA, i_pole)
+            sigA(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
+            sigA(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
+            sigA(MLBW_RA_RE, i_pole) = real(w_val)
+            sigA(MLBW_RA_IM, i_pole) = real(ONEI*w_val)
+
+            ! Fission cross section derivative
+            r = multipole % data(MLBW_RF, i_pole)
+            sigF(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
+            sigF(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
+            sigF(MLBW_RF_RE, i_pole) = real(w_val)
+            sigF(MLBW_RF_IM, i_pole) = real(ONEI*w_val)
+
+          else if (multipole % formalism == FORM_RM) then
+            ! Total cross section derivative
+            r = multipole % data(RM_RT, i_pole)
+            sigT(MP_EA_RE, i_pole) = real(-dopp*sigT_factor(multipole % l_value(i_pole))*r*dw_val)
+            sigT(MP_EA_IM, i_pole) = real(-ONEI*sigT_factor(multipole % l_value(i_pole))*dopp*r*dw_val)
+            sigT(RM_RT_RE, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*w_val)
+            sigT(RM_RT_IM, i_pole) = real(sigT_factor(multipole % l_value(i_pole))*ONEI*w_val)
+
+            ! Absorption cross section derivative
+            r = multipole % data(RM_RA, i_pole)
+            sigA(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
+            sigA(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
+            sigA(RM_RA_RE, i_pole) = real(w_val)
+            sigA(RM_RA_IM, i_pole) = real(ONEI*w_val)
+
+            ! Fission cross section derivative
+            r = multipole % data(RM_RF, i_pole)
+            sigF(MP_EA_RE, i_pole) = real(-dopp*r*dw_val)
+            sigF(MP_EA_IM, i_pole) = real(-ONEI*dopp*r*dw_val)
+            sigF(RM_RF_RE, i_pole) = real(w_val)
+            sigF(RM_RF_IM, i_pole) = real(ONEI*w_val)
+          end if
+        end do
+      end if
+    end if
+  end subroutine wmp_deriv_eval_subset
 
 !===============================================================================
 ! MULTIPOLE_DERIV_EVAL evaluates the derivative of the cross
