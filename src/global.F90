@@ -279,10 +279,10 @@ module global
   real(8), allocatable :: respfilter_weights(:)
   integer :: n_sen_meshes  = 0 ! # of structured sensitivity calculation meshes
   integer :: n_resptallies = 0 ! # of different tallies in responses calculation
-  integer :: n_responses = 0   ! # of different GPT responses 
+  integer :: n_responses = 0   ! # of different GPT responses
   integer :: n_sens = 0        ! # of different tally for sensitivities
 
-  integer :: progenitornum = 0 ! # of different progenitors 
+  integer :: progenitornum = 0 ! # of different progenitors
   integer :: maxsecondnum  = 0 ! # of maximum secondary neutrons
   integer :: ifp_block = 0     ! block length of IFP calculation
   logical :: original        = .false.   ! logic used in IFP calculation
@@ -290,6 +290,7 @@ module global
   logical :: clutch_first    = .false.   ! first batch in CLUTCH calculation
   logical :: clutch_second   = .false.   ! second batch in CLUTCH calculation
   integer :: adjointmethod   = 0         ! IFP, CLUTCH(IFP), CLUTCH(FM)
+  integer :: START_POLE   = 800         ! IFP, CLUTCH(IFP), CLUTCH(FM)
 
   ! ============================================================================
   ! PARALLEL PROCESSING VARIABLES
@@ -581,7 +582,7 @@ contains
     call nuclide_dict % clear()
     call sab_dict % clear()
 
-    ! Deallocate dictionaries for sensitivity calculation 
+    ! Deallocate dictionaries for sensitivity calculation
     if(allocated(sen_meshes)) deallocate(sen_meshes)
     if(allocated(resp_tallies)) deallocate(resp_tallies)
     if(allocated(responses)) deallocate(responses)

@@ -470,10 +470,10 @@ contains
       call get_mesh_bin(m, p % coord(1) % xyz, next_bin_mesh)
       if (next_bin_mesh == NO_BIN_FOUND) cycle SENSITIVITY_LOOP
 
-      t % neutrontally(progenitornum, 1, 1, &
-           next_bin_mesh, 1) = &
-      t % neutrontally(progenitornum, 1, 1, &
-           next_bin_mesh, 1) + 1
+      t % neutrontally(1, 1, &
+           next_bin_mesh, 1, progenitornum) = &
+      t % neutrontally(1, 1, &
+           next_bin_mesh, 1, progenitornum) + 1
 
     end do SENSITIVITY_LOOP
 
@@ -648,12 +648,13 @@ contains
            ! Get index of tally and pointer to tally
            t => sensitivities(i)
            t % neutrontally   = 0
-           t % poleNeutrontally   = 0
+           !t % poleNeutrontally   = 0
            t % neutronvalue   = 0
            if (adjointmethod /= 4) then
               t % neutronfission = 0
            end if
            t % results(3,:,:,:,:) = 0 ! used as direct term in gpt ifp
+           t % poleResults(3,:,:,:,:,:,:) = 0 ! used as direct term in gpt ifp
            if (adjointmethod == 5) then ! calculate importance
               t % gptvaluenumer  = 0
               t % gptvaluedenom  = 0
@@ -691,6 +692,7 @@ contains
            t => sensitivities(i)
            t % clutchsen   = 0   ! every process has an array
            t % denom = 0   ! every process has one value
+           t % poleClutchsen   = 0   ! every process has an array
         end do SENSITIVITY_LOOP
      end if
      if (mod(current_batch - n_inactive, 2) == 0) then
@@ -901,7 +903,7 @@ contains
           do k = 1, t % imp_mesh_bins
              if (t % neutronfission(k) /= 0) then
                t % importance(k) = t % importance(k) + &
-               sum(t % neutrontally(:,1,1,k,1) * t % neutronvalue(:))/&
+               sum(t % neutrontally(1,1,k,1,:) * t % neutronvalue(:))/&
                    t % neutronfission(k)
              else
                t % importance(k) = t % importance(k)
@@ -992,6 +994,12 @@ contains
      integer :: i
      integer :: i_mesh
      integer :: imp_mesh_bin
+     integer :: mt_number
+
+     integer :: r
+     integer :: s
+
+     real(8) :: poleScore(MAX_PARAMS,MAX_POLES)    ! score for the poles
 
      ! A loop over all sensitivities is necessary
      SENSITIVITY_LOOP: do i = 1, n_sens
@@ -1019,11 +1027,81 @@ contains
            ! t % clutchsen(:,:,:,:) = t % clutchsen(:,:,:,:) + &
            ! t % cumtally(:,:,:,:) * p % wgt * 1 * &
            !      material_xs % nu_fission / material_xs % total
+
+           call sensitivity_clutch_scacol_pole(t, p, imp_mesh_bin)
+
         end if
 
      end do SENSITIVITY_LOOP
 
   end subroutine sensitivity_clutch_scacol
+
+
+!===============================================================================
+! SENSITIVITY_CLUTCH_SCACOL_POLES CALCULATES SCATTERING AND COLLISION TERMS IN CLUTCH
+! METHOD FOR THE POLES
+!===============================================================================
+
+  subroutine sensitivity_clutch_scacol_pole(t, p, imp_mesh_bin)
+
+     type(Particle), intent(in) :: p
+     integer, intent(in) :: imp_mesh_bin
+     type(RegularMesh), pointer :: m
+     type(Material),    pointer :: mat
+     type(SensitivityObject), intent(inout),pointer :: t
+
+     integer :: i
+     integer :: i_mesh
+
+     integer :: mt_number
+
+     integer :: r
+     integer :: s
+
+     real(8) :: poleScore(MAX_PARAMS,MAX_POLES)    ! score for the poles
+
+     mt_number = t % score_bins(1) ! This is not general, need to have
+                                   ! it loop over the mts, maybe just make this another function
+
+     ! Determine which derivative to use:
+     associate (nuc => nuclides(t % nuclide_bins(1)))
+
+       select case(mt_number)
+       case (SCORE_SCATTER)
+         poleScore = nuc % RRR * (nuc % sigT_derivative &
+                  - nuc % sigA_derivative)
+
+       case (ELASTIC)
+         poleScore = nuc % RRR * nuc % sigElastic_derivative
+
+       case (SCORE_ABSORPTION)
+         poleScore = nuc % RRR * nuc % sigA_derivative
+
+       case (SCORE_FISSION)
+         poleScore = nuc % RRR * nuc % sigF_derivative
+
+       case (SCORE_CAPTURE)
+         poleScore = nuc % RRR * (nuc % sigA_derivative &
+                  - nuc % sigF_derivative)
+
+       case (SCORE_TOTAL)
+         poleScore = nuc % RRR * nuc % sigT_derivative
+
+       case default
+         poleScore = ZERO
+
+       end select
+     end associate
+
+     do r = 1, MAX_POLES
+        do s = 1, MAX_PARAMS
+          t % poleClutchsen(s,r,:,:,:,:) = t % poleClutchsen(s,r,:,:,:,:) + &
+          t % poleCumtally(s,r,:,:,:,:) * p % wgt * t % importance(imp_mesh_bin) * &
+              material_xs % nu_fission * poleScore(s,r) / material_xs % total
+        end do
+     end do
+
+  end subroutine sensitivity_clutch_scacol_pole
 
 
 !===============================================================================
@@ -1052,6 +1130,8 @@ contains
     type(Material),    pointer :: mat
     type(RegularMesh), pointer :: m
 
+    real(8) :: poleScore(MAX_PARAMS,MAX_POLES)    ! score for the poles
+
 
     ! A loop over all sensitivities is necessary
 
@@ -1065,6 +1145,27 @@ contains
 
       ! Get index of tally and pointer to tally
       t => sensitivities(i)
+
+      ! ======================================================================
+      ! Score logic,  to check if the score is in the
+      ! sensitivity tally list
+      SCORE_BIN_LOOP: do j = 1, t % n_score_bins
+
+          ! determine what type of score bin
+          i_score_sen = t % score_bins(j)
+
+          ! the reaction type is in the sensitivity tally list
+          if (i_score_sen == mt_number) then
+
+             score_bin = j
+
+             exit SCORE_BIN_LOOP
+
+           end if
+
+       end do SCORE_BIN_LOOP
+
+       if (score_bin == 0) cycle SENSITIVITY_LOOP
 
       ! ======================================================================
       ! Mesh logic to determine the importance function
@@ -1107,27 +1208,6 @@ contains
        end do NUCLIDE_BIN_LOOP
       if (nuclide_bin == 0) cycle SENSITIVITY_LOOP
 
-      ! ======================================================================
-      ! Score logic,  to check if the score is in the
-      ! sensitivity tally list
-      SCORE_BIN_LOOP: do j = 1, t % n_score_bins
-
-          ! determine what type of score bin
-          i_score_sen = t % score_bins(j)
-
-          ! the reaction type is in the sensitivity tally list
-          if (i_score_sen == mt_number) then
-
-             score_bin = j
-
-             exit SCORE_BIN_LOOP
-
-           end if
-
-       end do SCORE_BIN_LOOP
-
-       if (score_bin == 0) cycle SENSITIVITY_LOOP
-
        t % clutchsen(nuclide_bin,score_bin,p % mesh_born,energy_bin) = &
          t % clutchsen(nuclide_bin,score_bin,p % mesh_born,energy_bin) + &
          p % wgt * t % importance(imp_mesh_bin) * material_xs % nu_fission / &
@@ -1137,6 +1217,41 @@ contains
       !   t % clutchsen(nuclide_bin,score_bin,p % mesh_born,energy_bin) + &
       !   p % wgt * 1 * material_xs % nu_fission / &
       !   material_xs % total
+
+      ! Determine which derivative to use:
+      associate (nuc => nuclides(i_nuclide_sen))
+
+        select case(mt_number)
+        case (SCORE_SCATTER)
+          poleScore = nuc % RRR * (nuc % sigT_derivative &
+                - nuc % sigA_derivative)
+
+        case (ELASTIC)
+          poleScore = nuc % RRR * nuc % sigElastic_derivative
+
+        case (SCORE_ABSORPTION)
+          poleScore = nuc % RRR * nuc % sigA_derivative
+
+        case (SCORE_FISSION)
+          poleScore = nuc % RRR * nuc % sigF_derivative
+
+        case (SCORE_CAPTURE)
+          poleScore = nuc % RRR * (nuc % sigA_derivative &
+            - nuc % sigF_derivative)
+
+        case (SCORE_TOTAL)
+          poleScore = nuc % RRR * nuc % sigT_derivative
+
+        case default
+          poleScore = ZERO
+
+        end select
+      end associate
+
+       t % poleClutchsen(:,:,nuclide_bin,score_bin,p % mesh_born,energy_bin) = &
+         t % poleClutchsen(:,:,nuclide_bin,score_bin,p % mesh_born,energy_bin) + &
+         p % wgt * t % importance(imp_mesh_bin) * material_xs % nu_fission / &
+         material_xs % total * poleScore
 
     end do SENSITIVITY_LOOP
 
@@ -1315,6 +1430,9 @@ contains
      integer :: m
      integer :: n
      real(8) :: value
+     integer :: p
+     integer :: q
+     real(8) :: polevalue
 
      call collect_clutchcal()
 
@@ -1332,6 +1450,13 @@ contains
                       value = t%clutchsen(k,l,m,n)/t % denom
                       t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
                       t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value *value
+                        do p = 1, MAX_POLES
+                          do q = 1, MAX_PARAMS
+                             polevalue = t%poleClutchsen(q,p,k,l,m,n)/t % denom
+                             t%poleResults(1,q,p,k,l,m,n) = t%poleResults(1,q,p,k,l,m,n) + polevalue
+                             t%poleResults(2,q,p,k,l,m,n) = t%poleResults(2,q,p,k,l,m,n) + polevalue *polevalue
+                          end do
+                        end do
                    end do
                 end do
              end do

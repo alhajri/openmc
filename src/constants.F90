@@ -60,7 +60,7 @@ module constants
   ! Adjustable sizes for the multipole parameter derivatives
   integer, parameter :: MAX_POLES   = 30
   integer, parameter :: MAX_PARAMS  = 10
-  integer, parameter :: START_POLE  = 800
+  !integer, parameter :: START_POLE  = 800
 
   ! ============================================================================
   ! PHYSICAL CONSTANTS

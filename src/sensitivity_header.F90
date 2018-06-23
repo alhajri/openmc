@@ -115,6 +115,9 @@ module sensitivity_header
     ! tally result of different progenitor
     real(8), allocatable :: poleNeutrontally(:,:,:,:,:,:,:)
 
+    ! clutch sensitivity for a process
+    real(8), allocatable :: poleClutchsen(:,:,:,:,:,:)
+
   end type SensitivityObject
 
 end module sensitivity_header

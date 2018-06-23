@@ -3992,8 +3992,8 @@ contains
 
 
 !===============================================================================
-! READ_sensitivities_XML reads data from a sensitivity.xml file and parses it, 
-! checking for errors and placing properly-formatted data in the right data 
+! READ_sensitivities_XML reads data from a sensitivity.xml file and parses it,
+! checking for errors and placing properly-formatted data in the right data
 ! structures
 !===============================================================================
 
@@ -4056,7 +4056,7 @@ contains
 
     ! Check if tallies.xml exists
     filename = trim(path_input) // "sensitivities.xml"
-    
+
     inquire(FILE=filename, EXIST=file_exists)
     if (.not. file_exists) then
       ! Since a sensitivities.xml file is optional, no error is issued here
@@ -4075,8 +4075,8 @@ contains
 
     ! Get pointer list to XML <mesh>
     call get_node_list(doc, "mesh", node_mesh_list)
- 
-    
+
+
     ! Get pointer list to XML <response>
     call get_node_list(doc, "tally", node_tal_list)
 
@@ -4088,12 +4088,12 @@ contains
 
     ! Check for meshes
     n_sen_meshes = get_list_size(node_mesh_list)
-    
+
     ! Allocate mesh array
     if (n_sen_meshes > 0) then
       allocate(sen_meshes(n_sen_meshes))
     end if
-    
+
     ! Check for GPT tallies
     n_resptallies = get_list_size(node_tal_list)
 
@@ -5255,7 +5255,7 @@ contains
                 // " specified on response " // trim(to_str(r % id)))
          end if
       end if
- 
+
       ! Add tally to dictionary
       call response_dict % add_key(r % id, i)
 
@@ -5315,13 +5315,19 @@ contains
          call get_node_value(node_sen, "blocklen", s % blocklen)
          ifp_block = s % blocklen
       end if
-      
+
       ! for IFP calculation, blocklen must be specified
       if (s % method /= 3) then
         if (s % blocklen == 0) then
            call fatal_error("Must specify block len for this adjoint method.")
-        end if 
+        end if
       end if
+
+      if (check_for_node(node_sen, "start_pole")) then
+         call get_node_value(node_sen, "start_pole", START_POLE)
+      end if
+
+      print *, "Evaluating poles from ", START_POLE, " to ", (START_POLE + MAX_POLES)
 
       ! =======================================================================
       ! READ DATA FOR MESH ID
@@ -5415,7 +5421,7 @@ contains
 
           ! Set bin to index in nuclides array
           s % nuclide_bins(j) = nuclide_dict % get_key(word)
-          
+
         end do
 
         ! Set number of nuclide bins
@@ -5437,7 +5443,7 @@ contains
 
         ! Allocate score storage accordingly
         allocate(s % score_bins(n_scores))
-      
+
         do j = 1, n_words
 
           score_name = sarray(j)
@@ -5476,7 +5482,7 @@ contains
 
           case ('nubar')
             s % score_bins(j) = FISSION_NUBAR
- 
+
           case ('(n,2nd)')
             s % score_bins(j) = N_2ND
           case ('(n,na)')
