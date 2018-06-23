@@ -850,6 +850,9 @@ contains
     integer :: startw      ! window start pointer (for poles)
     integer :: endw        ! window end pointer
     integer :: dummy        ! window end pointer
+    integer :: END_POLE
+    integer :: start_deriv
+    integer :: end_deriv
 
     ! ==========================================================================
     ! Bookkeeping
@@ -876,6 +879,12 @@ contains
       call compute_sigT_factor(multipole, sqrtE, sigT_factor)
     end if
 
+    END_POLE = START_POLE + MAX_POLES - 1
+
+    ! windowed start and end points
+    start_deriv = max(START_POLE, startw)
+    end_deriv = min(END_POLE, endw)
+
     ! Initialize the ouptut cross section derivatives.
     sigT = ZERO
     sigA = ZERO
@@ -886,7 +895,7 @@ contains
 
     if (sqrtkT == ZERO) then
       ! If at 0K, use asymptotic form.
-      do i_pole = START_POLE, (START_POLE + MAX_POLES - 1)
+      do i_pole = start_deriv, end_deriv
         dummy = 1 + i_pole - START_POLE
         psi_chi = -ONEI / (multipole % data(MP_EA, i_pole) - sqrtE)
         c_temp = psi_chi / E
@@ -943,8 +952,8 @@ contains
       end do
     else
       ! At temperature, use Faddeeva function-based form.
-      if (endw >= startw) then
-        do i_pole = START_POLE, (START_POLE + MAX_POLES - 1)
+      if (endw >= startw .and. end_deriv >= start_deriv) then
+        do i_pole = start_deriv, end_deriv
           dummy = 1 + i_pole - START_POLE
           Z = (sqrtE - multipole % data(MP_EA, i_pole)) * dopp
           w_val = faddeeva(Z) * dopp * invE * SQRT_PI

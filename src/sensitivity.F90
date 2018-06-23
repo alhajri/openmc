@@ -768,8 +768,8 @@ contains
                 MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
            call MPI_REDUCE(MPI_IN_PLACE, t % neutronvalue, n3, MPI_REAL8, &
                 MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
-           call MPI_REDUCE(MPI_IN_PLACE, t % poleNeutrontally, n4, MPI_REAL8, &
-                MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
+           !call MPI_REDUCE(MPI_IN_PLACE, t % poleNeutrontally, n4, MPI_REAL8, &
+            !    MPI_SUM, 0, MPI_COMM_WORLD, mpi_err)
          else
            ! Receive buffer not significant at other processors
            call MPI_REDUCE(t % neutrontally, dummy, n1, MPI_REAL8, MPI_SUM, 0, &
@@ -778,8 +778,8 @@ contains
                 MPI_COMM_WORLD, mpi_err)
            call MPI_REDUCE(t % neutronvalue, dummy, n3, MPI_REAL8, MPI_SUM, 0, &
                 MPI_COMM_WORLD, mpi_err)
-           call MPI_REDUCE(t % poleNeutrontally, dummy, n4, MPI_REAL8, MPI_SUM, 0, &
-                MPI_COMM_WORLD, mpi_err)
+           !call MPI_REDUCE(t % poleNeutrontally, dummy, n4, MPI_REAL8, MPI_SUM, 0, &
+            !    MPI_COMM_WORLD, mpi_err)
          end if
       end do SENSITIVITY_LOOP
 
@@ -1046,7 +1046,6 @@ contains
 
      type(Particle), intent(in) :: p
      integer, intent(in) :: imp_mesh_bin
-     type(RegularMesh), pointer :: m
      type(Material),    pointer :: mat
      type(SensitivityObject), intent(inout),pointer :: t
 
@@ -1057,48 +1056,60 @@ contains
 
      integer :: r
      integer :: s
+     integer :: k
+     integer :: l
+     integer :: m
+     integer :: n
 
      real(8) :: poleScore(MAX_PARAMS,MAX_POLES)    ! score for the poles
 
-     mt_number = t % score_bins(1) ! This is not general, need to have
-                                   ! it loop over the mts, maybe just make this another function
+     do n = 1, t % n_energy_bins
+       do m = 1, t % n_mesh_bins
+         do l = 1, t % n_score_bins
+           mt_number = t % score_bins(l)
+           do k = 1, t % n_nuclide_bins
 
-     ! Determine which derivative to use:
-     associate (nuc => nuclides(t % nuclide_bins(1)))
+             ! Determine which derivative to use:
+             associate (nuc => nuclides(t % nuclide_bins(k)))
 
-       select case(mt_number)
-       case (SCORE_SCATTER)
-         poleScore = nuc % RRR * (nuc % sigT_derivative &
-                  - nuc % sigA_derivative)
+               select case(mt_number)
+               case (SCORE_SCATTER)
+                 poleScore = nuc % RRR * (nuc % sigT_derivative &
+                        - nuc % sigA_derivative)
 
-       case (ELASTIC)
-         poleScore = nuc % RRR * nuc % sigElastic_derivative
+               case (ELASTIC)
+                 poleScore = nuc % RRR * nuc % sigElastic_derivative
 
-       case (SCORE_ABSORPTION)
-         poleScore = nuc % RRR * nuc % sigA_derivative
+               case (SCORE_ABSORPTION)
+                 poleScore = nuc % RRR * nuc % sigA_derivative
 
-       case (SCORE_FISSION)
-         poleScore = nuc % RRR * nuc % sigF_derivative
+               case (SCORE_FISSION)
+                 poleScore = nuc % RRR * nuc % sigF_derivative
 
-       case (SCORE_CAPTURE)
-         poleScore = nuc % RRR * (nuc % sigA_derivative &
-                  - nuc % sigF_derivative)
+               case (SCORE_CAPTURE)
+                 poleScore = nuc % RRR * (nuc % sigA_derivative &
+                        - nuc % sigF_derivative)
 
-       case (SCORE_TOTAL)
-         poleScore = nuc % RRR * nuc % sigT_derivative
+               case (SCORE_TOTAL)
+                 poleScore = nuc % RRR * nuc % sigT_derivative
 
-       case default
-         poleScore = ZERO
+               case default
+                 poleScore = ZERO
 
-       end select
-     end associate
+               end select
+             end associate
 
-     do r = 1, MAX_POLES
-        do s = 1, MAX_PARAMS
-          t % poleClutchsen(s,r,:,:,:,:) = t % poleClutchsen(s,r,:,:,:,:) + &
-          t % poleCumtally(s,r,:,:,:,:) * p % wgt * t % importance(imp_mesh_bin) * &
-              material_xs % nu_fission * poleScore(s,r) / material_xs % total
-        end do
+             do r = 1, MAX_POLES
+               do s = 1, MAX_PARAMS
+                 t % poleClutchsen(s,r,k,l,m,n) = t % poleClutchsen(s,r,k,l,m,n) + &
+                 t % poleCumtally(s,r,k,l,m,n) * p % wgt * t % importance(imp_mesh_bin) * &
+                      material_xs % nu_fission * poleScore(s,r) / material_xs % total
+               end do
+             end do
+
+           end do
+         end do
+       end do
      end do
 
   end subroutine sensitivity_clutch_scacol_pole
@@ -1443,10 +1454,10 @@ contains
           t => sensitivities(i)
           t % n_realizations = t % n_realizations + 1
 
-          do k = 1, t % n_nuclide_bins
-             do l = 1, t % n_score_bins
-                do m = 1, t % n_mesh_bins
-                   do n = 1, t % n_energy_bins
+          do n = 1, t % n_energy_bins
+             do m = 1, t % n_mesh_bins
+                do l = 1, t % n_score_bins
+                   do k = 1, t % n_nuclide_bins
                       value = t%clutchsen(k,l,m,n)/t % denom
                       t%results(1,k,l,m,n) = t%results(1,k,l,m,n) + value
                       t%results(2,k,l,m,n) = t%results(2,k,l,m,n) + value *value
