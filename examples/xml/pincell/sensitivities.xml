@@ -18,10 +18,11 @@
   <sensitivity id="1">
     <method> 1 </method>
     <blocklen> 5 </blocklen>
+    <start_pole>1</start_pole>
     <mesh> 1 </mesh>
     <energystructure> 1 </energystructure>
-    <nuclides> U235 </nuclides>
-    <scores> fission </scores>
+    <nuclides> U238 </nuclides>
+    <scores> absorption </scores>
   </sensitivity>
 
 </sensitivities>
