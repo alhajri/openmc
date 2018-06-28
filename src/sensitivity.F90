@@ -1099,13 +1099,17 @@ contains
                end select
              end associate
 
-             do r = 1, MAX_POLES
-               do s = 1, MAX_PARAMS
-                 t % poleClutchsen(s,r,k,l,m,n) = t % poleClutchsen(s,r,k,l,m,n) + &
-                 t % poleCumtally(s,r,k,l,m,n) * p % wgt * t % importance(imp_mesh_bin) * &
-                      material_xs % nu_fission * poleScore(s,r) / material_xs % total
-               end do
-             end do
+             t % poleClutchsen(:,:,k,l,m,n) = t % poleClutchsen(:,:,k,l,m,n) + &
+             t % poleCumtally(:,:,k,l,m,n) * p % wgt * t % importance(imp_mesh_bin) * &
+                   material_xs % nu_fission * poleScore / material_xs % total
+
+             !do r = 1, MAX_POLES
+            !   do s = 1, MAX_PARAMS
+            !     t % poleClutchsen(s,r,k,l,m,n) = t % poleClutchsen(s,r,k,l,m,n) + &
+            !     t % poleCumtally(s,r,k,l,m,n) * p % wgt * t % importance(imp_mesh_bin) * &
+            !          material_xs % nu_fission * poleScore(s,r) / material_xs % total
+            !   end do
+            ! end do
 
            end do
          end do
@@ -1360,8 +1364,7 @@ contains
          // " specified on sensitivity " // trim(to_str(t % id)))
       end if
       call get_mesh_bin(m, p % coord(1) % xyz, imp_mesh_bin)
-
-      if (imp_mesh_bin == 0) cycle SENSITIVITY_LOOP
+      if (imp_mesh_bin == NO_BIN_FOUND) cycle SENSITIVITY_LOOP
 
       t % denom = t % denom + &
          p % wgt * t % importance(imp_mesh_bin) * material_xs % nu_fission / &
