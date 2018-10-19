@@ -1233,40 +1233,15 @@ contains
       !   p % wgt * 1 * material_xs % nu_fission / &
       !   material_xs % total
 
-      ! Determine which derivative to use:
-      associate (nuc => nuclides(i_nuclide_sen))
-
-        select case(mt_number)
-        case (SCORE_SCATTER)
-          poleScore = nuc % RRR * (nuc % sigT_derivative &
-                - nuc % sigA_derivative)
-
-        case (ELASTIC)
-          poleScore = nuc % RRR * nuc % sigElastic_derivative
-
-        case (SCORE_ABSORPTION)
-          poleScore = nuc % RRR * nuc % sigA_derivative
-
-        case (SCORE_FISSION)
-          poleScore = nuc % RRR * nuc % sigF_derivative
-
-        case (SCORE_CAPTURE)
-          poleScore = nuc % RRR * (nuc % sigA_derivative &
-            - nuc % sigF_derivative)
-
-        case (SCORE_TOTAL)
-          poleScore = nuc % RRR * nuc % sigT_derivative
-
-        case default
-          poleScore = ZERO
-
-        end select
-      end associate
+      !print *, "Nuclide Causing Fission = ", nuclides(i_nuclide_sen) % name
+      !print *, "Energy Causing Fission  = ", p % energy_fission
+      !print *, "Derivative              = ", p % dsigF_born(1,7)
+      !print *, "neutron id              = ", p % id
 
        t % poleClutchsen(:,:,nuclide_bin,score_bin,p % mesh_born,energy_bin) = &
          t % poleClutchsen(:,:,nuclide_bin,score_bin,p % mesh_born,energy_bin) + &
-         p % wgt * t % importance(imp_mesh_bin) * material_xs % nu_fission / &
-         material_xs % total * poleScore
+         p % dsigF_born * p % wgt * t % importance(imp_mesh_bin) * material_xs % nu_fission / &
+         material_xs % total
 
     end do SENSITIVITY_LOOP
 
@@ -1315,6 +1290,18 @@ contains
       ! ======================================================================
       ! MT number logic
       b % mtnum_born = mt_number
+
+      ! ======================================================================
+      ! Fission Derivative Logic
+      associate (nuc => nuclides(i_nuclide))
+        if (nuc % calculate_derivative) then
+          !print *, "Fission Causing Nuclide : ", nuc % name
+          !print *, "Energy Causing Fission  = ", b % E
+          !print *, "Derivative              = ",  nuc % sigF_derivative(1,7:10)
+          b % dsigF_born = nuc % RRR * nuc % sigF_derivative
+          !b % dsigF_born = nuc % sigF_derivative
+        end if
+      end associate
 
       ! ======================================================================
       ! Mesh_born logic

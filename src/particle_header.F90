@@ -2,7 +2,8 @@ module particle_header
 
   use bank_header,     only: Bank
   use constants,       only: NEUTRON, ONE, NONE, ZERO, MAX_SECONDARY, &
-                             MAX_DELAYED_GROUPS, ERROR_REAL
+                             MAX_DELAYED_GROUPS, ERROR_REAL, MAX_POLES, &
+                             MAX_PARAMS
   use error,           only: fatal_error
   use geometry_header, only: BASE_UNIVERSE
 
@@ -52,6 +53,7 @@ module particle_header
     integer :: mtnum_born     ! index of MT number causing fission
     integer :: mesh_born      ! index of fission mesh for clutch tally
     integer :: mesh_born_fm   ! index of fission mesh for fission matrix
+    real(8)        :: dsigF_born(MAX_PARAMS,MAX_POLES)       ! fission cross derivative section
 
     ! Particle coordinates
     integer          :: n_coord          ! number of current coordinates
@@ -230,8 +232,9 @@ contains
     this % energy_fission    = src % energy_fission ! index of energy causing fission
     this % energy_born       = src % energy_born    ! index of energy causing fission
     this % mtnum_born        = src % mtnum_born     ! index of MT number causing fission
-    this % mesh_born         = src % mesh_born      ! index of fission mesh 
-    this % mesh_born_fm      = src % mesh_born_fm   ! index of fission mesh 
+    this % mesh_born         = src % mesh_born      ! index of fission mesh
+    this % mesh_born_fm      = src % mesh_born_fm   ! index of fission mesh
+    this % dsigF_born        = src % dsigF_born       ! fission cross derivative section
 
   end subroutine initialize_from_source
 
@@ -269,6 +272,7 @@ contains
     this % secondary_bank(n) % mtnum_born      = this % mtnum_born
     this % secondary_bank(n) % mesh_born       = this % mesh_born
     this % secondary_bank(n) % mesh_born_fm    = this % mesh_born_fm
+    this % secondary_bank(n) % dsigF_born      = this % dsigF_born
   end subroutine create_secondary
 
 end module particle_header

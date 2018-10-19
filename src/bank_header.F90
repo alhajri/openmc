@@ -2,6 +2,8 @@ module bank_header
 
   use, intrinsic :: ISO_C_BINDING
 
+  use constants
+
   implicit none
 
 !===============================================================================
@@ -15,8 +17,9 @@ module bank_header
     real(C_DOUBLE) :: xyz(3)         ! location of bank particle
     real(C_DOUBLE) :: uvw(3)         ! diretional cosines
     real(C_DOUBLE) :: E              ! energy / energy group if in MG mode.
+    real(C_DOUBLE) :: dsigF_born(MAX_PARAMS,MAX_POLES)       ! fission cross derivative section
     integer(C_INT) :: delayed_group  ! delayed group
-    integer(C_INT) :: ifp_id         ! index of progenitor 
+    integer(C_INT) :: ifp_id         ! index of progenitor
     integer(C_INT) :: nuclide_born   ! index of fission nuclide
     integer(C_INT) :: energy_fission ! index of energy causing fission
     integer(C_INT) :: energy_born    ! index of energy of fission neutron

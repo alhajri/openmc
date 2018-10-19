@@ -160,6 +160,7 @@ contains
           end do
        end do
     end do
+    print *, "Pole Sensitivities: ", sensitivities(1) % poleResults(1:2,1,7,1,1,1,1)
   end if
   end subroutine run_simulation
 

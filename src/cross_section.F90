@@ -241,6 +241,11 @@ contains
 
           if (nuc % fissionable) then
             nuc % sigF_derivative = dsigF / sigF
+            !if (clutch_first) then
+              !print *, "Derivative name: ", nuc % name
+              !print *, "Energy = ", E
+              !print *, "Derivative = ", nuc % sigF_derivative(1,7)
+            !end if
           else
             nuc % sigF_derivative = ZERO
           end if
