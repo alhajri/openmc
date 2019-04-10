@@ -364,14 +364,17 @@ contains
       ! Sensitivity scoring of scattering term
       if (sen_on) then
          if (adjointmethod == 1 .AND. original) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_TOTAL)
             call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
             call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
          end if
          if (adjointmethod == 2 .AND. clutch_first) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_TOTAL)
             call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
             call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
          end if
          if (adjointmethod == 3 .AND. clutch_first) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_TOTAL)
             call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
             call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
          end if
@@ -394,6 +397,9 @@ contains
     else
       ! =======================================================================
       ! INELASTIC SCATTERING
+
+      ! I believe that since inelastic is a threshold reaction, it should not
+      ! be accounted for in the scattering sensitivity
 
       ! note that indexing starts from 2 since nuc % reactions(1) is elastic
       ! scattering
