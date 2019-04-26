@@ -2,11 +2,11 @@
 <settings>
 
 
-  <cross_sections>/home/alhajri/code/gptmc/openmc/data/nndc_hdf5/cross_sections.xml</cross_sections>
+  <cross_sections>/home/abdullah_uae/openmc/data/nndc_hdf5/cross_sections.xml</cross_sections>
 
   <temperature_method>multipole</temperature_method>
 
-  <multipole_library>/home/alhajri/code/gptmc/openmc/data/wmp</multipole_library>
+  <multipole_library>/home/abdullah_uae/openmc/data/wmp</multipole_library>
 
   <!-- Define how many particles to run and for how many batches -->
   <eigenvalue>

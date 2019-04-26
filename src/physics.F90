@@ -364,14 +364,17 @@ contains
       ! Sensitivity scoring of scattering term
       if (sen_on) then
          if (adjointmethod == 1 .AND. original) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_TOTAL)
             call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
             call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
          end if
          if (adjointmethod == 2 .AND. clutch_first) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_TOTAL)
             call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
             call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
          end if
          if (adjointmethod == 3 .AND. clutch_first) then
+            call score_scattering_sensitivity(p, i_nuclide, SCORE_TOTAL)
             call score_scattering_sensitivity(p, i_nuclide, SCORE_SCATTER)
             call score_scattering_sensitivity(p, i_nuclide, ELASTIC)
          end if
@@ -1303,7 +1306,7 @@ contains
                  i_nuclide, nuc%reactions(i_reaction)%MT)
          end if
       else       ! there isn't sensitivity calculation, pass these information
-        print *, "Why would you enter here?"
+        !print *, "Why would you enter here?"
          bank_array(i) % ifp_id = p % ifp_id
          bank_array(i) % nuclide_born = p % nuclide_born
          bank_array(i) % energy_fission = p % energy_fission
