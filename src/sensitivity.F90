@@ -232,28 +232,9 @@ contains
       associate (nuc => nuclides(i_nuclide))
 
         select case(mt_number)
-        case (SCORE_SCATTER)
-          poleScore = nuc % RRR * (nuc % sigT_derivative &
-                    - nuc % sigA_derivative)
-
-        case (ELASTIC)
-          poleScore = nuc % RRR * nuc % sigElastic_derivative
-
-        case (SCORE_ABSORPTION)
-          poleScore = nuc % RRR * nuc % sigA_derivative
-
-        case (SCORE_FISSION)
-          poleScore = nuc % RRR * nuc % sigF_derivative
-
-        case (SCORE_CAPTURE)
-          poleScore = nuc % RRR * (nuc % sigA_derivative &
-            - nuc % sigF_derivative)
-
         case (SCORE_TOTAL)
-          poleScore = nuc % RRR * nuc % sigT_derivative
-
-        case (FISSION_CHI)
-          poleScore = ZERO
+          !poleScore = nuc % RRR * nuc % sigT_derivative
+          poleScore = nuc % RRR * nuc % sigElastic_derivative
 
         case default
           poleScore = ZERO
@@ -392,27 +373,8 @@ contains
         select case(mt_number)
 
         case (SCORE_TOTAL)
-          poleScore = nuc % RRR * nuc % sigT_derivative
-
-        case (SCORE_SCATTER)
-          poleScore = nuc % RRR * (nuc % sigT_derivative &
-                    - nuc % sigA_derivative)
-
-        case (SCORE_ABSORPTION)
-          poleScore = nuc % RRR * nuc % sigA_derivative
-
-        case (SCORE_FISSION)
+          !poleScore = nuc % RRR * nuc % sigT_derivative
           poleScore = nuc % RRR * nuc % sigF_derivative
-
-        case (SCORE_CAPTURE)
-          poleScore = nuc % RRR * (nuc % sigA_derivative &
-                    - nuc % sigF_derivative)
-
-        case (ELASTIC)
-          poleScore = nuc % RRR * nuc % sigElastic_derivative
-
-        case (FISSION_CHI)
-          poleScore = ZERO
 
         case default
           poleScore = ZERO
@@ -982,6 +944,9 @@ contains
 !===============================================================================
 ! SENSITIVITY_CLUTCH_SCACOL CALCULATES SCATTERING AND COLLISION TERMS IN CLUTCH
 ! METHOD
+!
+! basically multiplies by the adjoint, no derivatives needed here...
+!
 !===============================================================================
 
   subroutine sensitivity_clutch_scacol(p)
@@ -1028,7 +993,11 @@ contains
            ! t % cumtally(:,:,:,:) * p % wgt * 1 * &
            !      material_xs % nu_fission / material_xs % total
 
-           call sensitivity_clutch_scacol_pole(t, p, imp_mesh_bin)
+           t % poleClutchsen(:,:,:,:,:,:) = t % poleClutchsen(:,:,:,:,:,:) + &
+           t % poleCumtally(:,:,:,:,:,:) * p % wgt * t % importance(imp_mesh_bin) * &
+                material_xs % nu_fission / material_xs % total
+
+           !call sensitivity_clutch_scacol_pole(t, p, imp_mesh_bin)
 
         end if
 
@@ -1121,6 +1090,10 @@ contains
 
 !===============================================================================
 ! SENSITIVITY_CLUTCH_FISSION calculates fission related sensitivities
+!
+! Multiplies the adjoint of the fission neutrons with the derivative from the
+! from the fission event.
+!
 !===============================================================================
 
   subroutine sensitivity_clutch_fission(p, mt_number)
@@ -1372,10 +1345,11 @@ contains
      if (clutch_first) call sensitivity_clutch_scacol(p)
 
      if (clutch_second) then
+       call sensitivity_clutch_fission(p, SCORE_TOTAL)
        call sensitivity_clutch_fission(p, SCORE_FISSION)
-       call sensitivity_clutch_fission(p, FISSION_NUBAR)
-       call sensitivity_clutch_fission(p, FISSION_CHI)
-       call sensitivity_clutch_fission(p, p % mtnum_born)
+       !call sensitivity_clutch_fission(p, FISSION_NUBAR)
+       !call sensitivity_clutch_fission(p, FISSION_CHI)
+       !call sensitivity_clutch_fission(p, p % mtnum_born)
        call score_denom_clutch(p)
      end if
 
