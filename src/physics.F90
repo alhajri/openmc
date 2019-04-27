@@ -1309,7 +1309,7 @@ contains
                  i_nuclide, nuc%reactions(i_reaction)%MT)
          end if
       else       ! there isn't sensitivity calculation, pass these information
-        print *, "Why would you enter here?"
+        !print *, "Why would you enter here?"
          bank_array(i) % ifp_id = p % ifp_id
          bank_array(i) % nuclide_born = p % nuclide_born
          bank_array(i) % energy_fission = p % energy_fission
