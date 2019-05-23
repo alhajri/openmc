@@ -18,6 +18,7 @@
 #include "openmc/tallies/filter_legendre.h"
 #include "openmc/tallies/filter_material.h"
 #include "openmc/tallies/filter_mesh.h"
+#include "openmc/tallies/filter_meshborn.h"
 #include "openmc/tallies/filter_meshsurface.h"
 #include "openmc/tallies/filter_mu.h"
 #include "openmc/tallies/filter_particle.h"
@@ -77,6 +78,8 @@ allocate_filter(const std::string& type)
     model::tally_filters.push_back(std::make_unique<MaterialFilter>());
   } else if (type == "mesh") {
     model::tally_filters.push_back(std::make_unique<MeshFilter>());
+  } else if (type == "meshborn") {
+    model::tally_filters.push_back(std::make_unique<MeshbornFilter>());
   } else if (type == "meshsurface") {
     model::tally_filters.push_back(std::make_unique<MeshSurfaceFilter>());
   } else if (type == "mu") {
