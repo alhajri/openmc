@@ -248,6 +248,7 @@ public:
                             //!< reflective/periodic surface crossing for
                             //!< current tallies
   Position r_last_;   //!< previous coordinates
+  Position r_born_;   //!< coordinates of the particle's birth cite
   Direction u_last_;  //!< previous direction coordinates
   double wgt_last_ {1.0};   //!< pre-collision particle weight
   double wgt_absorb_ {0.0}; //!< weight absorbed for survival biasing

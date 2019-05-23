@@ -107,6 +107,7 @@ Particle::from_source(const Bank* src)
   this->u() = src->u;
   r_last_current_ = src->r;
   r_last_ = src->r;
+  r_born_ = src->r;
   u_last_ = src->u;
   if (settings::run_CE) {
     E_ = src->E;
