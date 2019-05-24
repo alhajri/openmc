@@ -1,5 +1,5 @@
-#ifndef OPENMC_TALLIES_FILTER_MESH_H
-#define OPENMC_TALLIES_FILTER_MESH_H
+#ifndef OPENMC_TALLIES_FILTER_MESHBORN_H
+#define OPENMC_TALLIES_FILTER_MESHBORN_H
 
 #include <cstdint>
 
@@ -13,12 +13,12 @@ namespace openmc {
 //! correspond to the fraction of the track length that lies in that bin.
 //==============================================================================
 
-class MeshFilter : public Filter
+class MeshbornFilter : public Filter
 {
 public:
-  ~MeshFilter() = default;
+  ~MeshbornFilter() = default;
 
-  std::string type() const override {return "mesh";}
+  std::string type() const override {return "meshborn";}
 
   void from_xml(pugi::xml_node node) override;
 
