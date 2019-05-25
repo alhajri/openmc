@@ -17,9 +17,12 @@ class MeshbornFilter : public MeshFilter
 {
 public:
   std::string type() const override {return "meshborn";}
-
+  
   void get_all_bins(const Particle* p, int estimator, FilterMatch& match)
   const override;
+
+protected:
+  int32_t mesh_;
 };
 
 } // namespace openmc
