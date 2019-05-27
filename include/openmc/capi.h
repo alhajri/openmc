@@ -67,6 +67,8 @@ extern "C" {
   int openmc_mesh_set_params(int32_t index, int n, const double* ll, const double* ur, const double* width);
   int openmc_meshsurface_filter_get_mesh(int32_t index, int32_t* index_mesh);
   int openmc_meshsurface_filter_set_mesh(int32_t index, int32_t index_mesh);
+  int openmc_meshborn_filter_get_mesh(int32_t index, int32_t* index_mesh);
+  int openmc_meshborn_filter_set_mesh(int32_t index, int32_t index_mesh);
   int openmc_new_filter(const char* type, int32_t* index);
   int openmc_next_batch(int* status);
   int openmc_nuclide_name(int index, const char** name);
