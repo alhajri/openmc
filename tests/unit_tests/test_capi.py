@@ -120,6 +120,9 @@ def test_material(capi_init):
     m.set_density(rho)
     assert sum(m.densities) == pytest.approx(rho)
 
+    m.set_density(0.1, 'g/cm3')
+    assert m.density == pytest.approx(0.1)
+
 
 def test_new_material(capi_init):
     with pytest.raises(exc.AllocationError):
@@ -333,11 +336,11 @@ def test_find_material(capi_init):
 
 
 def test_mesh(capi_init):
-    mesh = openmc.capi.Mesh()
+    mesh = openmc.capi.RegularMesh()
     mesh.dimension = (2, 3, 4)
     assert mesh.dimension == (2, 3, 4)
     with pytest.raises(exc.AllocationError):
-        mesh2 = openmc.capi.Mesh(mesh.id)
+        mesh2 = openmc.capi.RegularMesh(mesh.id)
 
     # Make sure each combination of parameters works
     ll = (0., 0., 0.)
@@ -357,7 +360,7 @@ def test_mesh(capi_init):
     assert isinstance(meshes, Mapping)
     assert len(meshes) == 1
     for mesh_id, mesh in meshes.items():
-        assert isinstance(mesh, openmc.capi.Mesh)
+        assert isinstance(mesh, openmc.capi.RegularMesh)
         assert mesh_id == mesh.id
 
     mf = openmc.capi.MeshFilter(mesh)
