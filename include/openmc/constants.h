@@ -20,12 +20,13 @@ using double_4dvec = std::vector<std::vector<std::vector<std::vector<double>>>>;
 
 // OpenMC major, minor, and release numbers
 constexpr int VERSION_MAJOR {0};
-constexpr int VERSION_MINOR {10};
+constexpr int VERSION_MINOR {11};
 constexpr int VERSION_RELEASE {0};
+constexpr bool VERSION_DEV {true};
 constexpr std::array<int, 3> VERSION {VERSION_MAJOR, VERSION_MINOR, VERSION_RELEASE};
 
 // HDF5 data format
-constexpr int HDF5_VERSION[] {2, 0};
+constexpr int HDF5_VERSION[] {3, 0};
 
 // Version numbers for binary files
 constexpr std::array<int, 2> VERSION_STATEPOINT {17, 0};
@@ -35,7 +36,6 @@ constexpr std::array<int, 2> VERSION_SUMMARY {6, 0};
 constexpr std::array<int, 2> VERSION_VOLUME {1, 0};
 constexpr std::array<int, 2> VERSION_VOXEL {2, 0};
 constexpr std::array<int, 2> VERSION_MGXS_LIBRARY {1, 0};
-constexpr char VERSION_MULTIPOLE[] {"v0.2"};
 
 // ============================================================================
 // ADJUSTABLE PARAMETERS
