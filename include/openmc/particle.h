@@ -149,6 +149,7 @@ public:
     Position r;
     Direction u;
     double E;
+    double E_parent;
     double wgt;
     int delayed_group;
     Type particle;
@@ -239,6 +240,7 @@ public:
   // Energy data
   double E_;       //!< post-collision energy in eV
   double E_last_;  //!< pre-collision energy in eV
+  double E_parent_; //!< energy of parent neutron in eV
   int g_ {0};      //!< post-collision energy group (MG only)
   int g_last_;     //!< pre-collision energy group (MG only)
 

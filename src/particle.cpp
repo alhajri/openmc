@@ -92,7 +92,9 @@ Particle::create_secondary(Direction u, double E, Type type)
   bank.r = this->r();
   bank.u = u;
   bank.E = settings::run_CE ? E : g_;
-
+  if (settings::run_CE) {
+    bank.E_parent = this->E_; // does this work, abdulla
+  }
   n_bank_second_ += 1;
 }
 
@@ -120,6 +122,7 @@ Particle::from_source(const Bank* src)
   u_last_ = src->u;
   if (settings::run_CE) {
     E_ = src->E;
+    E_parent_ = src->E_parent;
     g_ = 0;
   } else {
     g_ = static_cast<int>(src->E);
