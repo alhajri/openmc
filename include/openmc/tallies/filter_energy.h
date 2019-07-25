@@ -51,5 +51,23 @@ public:
   std::string text_label(int bin) const override;
 };
 
+//==============================================================================
+//! Bins the outgoing neutron energy.
+//!
+//! Only scattering events use the get_all_bins functionality.  Nu-fission
+//! tallies manually iterate over the filter bins.
+//==============================================================================
+
+class ParentEnergyFilter : public EnergyFilter
+{
+public:
+  std::string type() const override {return "parentenergy";}
+
+  void get_all_bins(const Particle* p, int estimator, FilterMatch& match)
+  const override;
+
+  std::string text_label(int bin) const override;
+};
+
 } // namespace openmc
 #endif // OPENMC_TALLIES_FILTER_ENERGY_H

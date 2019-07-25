@@ -72,6 +72,8 @@ allocate_filter(const std::string& type)
     model::tally_filters.push_back(std::make_unique<EnergyFilter>());
   } else if (type == "energyout") {
     model::tally_filters.push_back(std::make_unique<EnergyoutFilter>());
+  } else if (type == "parentenergy") {
+    model::tally_filters.push_back(std::make_unique<ParentEnergyFilter>());
   } else if (type == "legendre") {
     model::tally_filters.push_back(std::make_unique<LegendreFilter>());
   } else if (type == "material") {

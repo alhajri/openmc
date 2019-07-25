@@ -107,6 +107,29 @@ EnergyoutFilter::text_label(int bin) const
 }
 
 //==============================================================================
+// ParentEnergyFilter implementation
+//==============================================================================
+
+void
+ParentEnergyFilter::get_all_bins(const Particle* p, int estimator,
+                              FilterMatch& match) const
+{
+  if (p->E_parent_ >= bins_.front() && p->E_parent_ <= bins_.back()) {
+    auto bin = lower_bound_index(bins_.begin(), bins_.end(), p->E_parent_);
+    match.bins_.push_back(bin);
+    match.weights_.push_back(1.0);
+  }
+}
+
+std::string
+ParentEnergyFilter::text_label(int bin) const
+{
+  std::stringstream out;
+  out << "Parent Energy [" << bins_[bin] << ", " << bins_[bin+1] << ")";
+  return out.str();
+}
+
+//==============================================================================
 // C-API functions
 //==============================================================================
 
