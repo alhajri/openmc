@@ -25,6 +25,9 @@ The current version of the depletion results file format is 1.0.
              nuclides, number of reactions).
            - **time** (*double[][2]*) -- Time in [s] at beginning/end of each
              step.
+           - **depletion time** (*double[]*) -- Average process time in [s] 
+             spent depleting a material across all burnable materials and,
+             if applicable, MPI processes.
 
 **/materials/<id>/**
 
@@ -41,3 +44,10 @@ The current version of the depletion results file format is 1.0.
 **/reactions/<name>/**
 
 :Attributes: - **index** (*int*) -- Index user in results for this reaction
+
+.. note::
+
+    The reaction rates for some isotopes not originally present may
+    be non-zero, but should be negligible compared to other atoms.
+    This can be controlled by changing the
+    :class:`openmc.deplete.Operator` ``dilute_initial`` attribute.
