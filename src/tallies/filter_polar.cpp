@@ -1,6 +1,6 @@
 #include "openmc/tallies/filter_polar.h"
 
-#include <sstream>
+#include <fmt/core.h>
 
 #include "openmc/constants.h"
 #include "openmc/error.h"
@@ -50,11 +50,11 @@ PolarFilter::set_bins(gsl::span<double> bins)
 }
 
 void
-PolarFilter::get_all_bins(const Particle* p, int estimator, FilterMatch& match)
+PolarFilter::get_all_bins(const Particle* p, TallyEstimator estimator, FilterMatch& match)
 const
 {
   double theta;
-  if (estimator == ESTIMATOR_TRACKLENGTH) {
+  if (estimator == TallyEstimator::TRACKLENGTH) {
     theta = std::acos(p->u().z);
   } else {
     theta = std::acos(p->u_last_.z);
@@ -77,9 +77,7 @@ PolarFilter::to_statepoint(hid_t filter_group) const
 std::string
 PolarFilter::text_label(int bin) const
 {
-  std::stringstream out;
-  out << "Polar Angle [" << bins_[bin] << ", " << bins_[bin+1] << ")";
-  return out.str();
+  return fmt::format("Polar Angle [{}, {})", bins_[bin], bins_[bin+1]);
 }
 
 } // namespace openmc

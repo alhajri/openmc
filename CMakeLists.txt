@@ -9,6 +9,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 # Set module path
 set(CMAKE_MODULE_PATH ${CMAKE_CURRENT_SOURCE_DIR}/cmake/Modules)
 
+# Allow user to specify <project>_ROOT variables
+if (NOT (CMAKE_VERSION VERSION_LESS 3.12))
+  cmake_policy(SET CMP0074 NEW)
+endif()
+
 #===============================================================================
 # Command line options
 #===============================================================================
@@ -35,17 +40,18 @@ endif()
 #===============================================================================
 if(dagmc)
   find_package(DAGMC REQUIRED)
+  add_library(dagmc-imported INTERFACE IMPORTED)
   link_directories(${DAGMC_LIBRARY_DIRS})
+  set_target_properties(dagmc-imported PROPERTIES
+    INTERFACE_LINK_LIBRARIES "${DAGMC_LIBRARIES}"
+    INTERFACE_INCLUDE_DIRECTORIES "${DAGMC_INCLUDE_DIRS}")
+else()
+  set(DAGMC_FOUND false)
 endif()
 
 #===============================================================================
 # HDF5 for binary output
 #===============================================================================
-
-# Allow user to specify HDF5_ROOT
-if (NOT (CMAKE_VERSION VERSION_LESS 3.12))
-  cmake_policy(SET CMP0074 NEW)
-endif()
 
 # Unfortunately FindHDF5.cmake will always prefer a serial HDF5 installation
 # over a parallel installation if both appear on the user's PATH. To get around
@@ -66,6 +72,13 @@ if(HDF5_IS_PARALLEL)
     message(FATAL_ERROR "Parallel HDF5 must be used with MPI.")
   endif()
   message(STATUS "Using parallel HDF5")
+endif()
+
+# Version 1.12 of HDF5 deprecates the H5Oget_info_by_idx() interface.
+# Thus, we give these flags to allow usage of the old interface in newer
+# versions of HDF5.
+if(NOT (${HDF5_VERSION} VERSION_LESS 1.12.0))
+  list(APPEND cxxflags -DH5Oget_info_by_idx_vers=1 -DH5O_info_t_vers=1)
 endif()
 
 #===============================================================================
@@ -110,33 +123,74 @@ message(STATUS "OpenMC Linker flags: ${ldflags}")
 endif()
 
 #===============================================================================
+# Update git submodules as needed
+#===============================================================================
+
+find_package(Git)
+if(GIT_FOUND AND EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/.git")
+  option(GIT_SUBMODULE "Check submodules during build" ON)
+  if(GIT_SUBMODULE)
+    message(STATUS "Submodule update")
+    execute_process(COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
+                    WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                    RESULT_VARIABLE GIT_SUBMOD_RESULT)
+    if(NOT GIT_SUBMOD_RESULT EQUAL 0)
+      message(FATAL_ERROR "git submodule update --init failed with \
+        ${GIT_SUBMOD_RESULT}, please checkout submodules")
+    endif()
+  endif()
+endif()
+
+# Check to see if submodules exist (by checking one)
+if(NOT EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/vendor/pugixml/CMakeLists.txt")
+  message(FATAL_ERROR "The git submodules were not downloaded! GIT_SUBMODULE was \
+    turned off or failed. Please update submodules and try again.")
+endif()
+
+#===============================================================================
 # pugixml library
 #===============================================================================
 
-add_library(pugixml vendor/pugixml/pugixml.cpp)
-target_include_directories(pugixml PUBLIC vendor/pugixml/)
+add_subdirectory(vendor/pugixml)
+
+#===============================================================================
+# {fmt} library
+#===============================================================================
+
+set(FMT_INSTALL ON CACHE BOOL "Generate the install target.")
+add_subdirectory(vendor/fmt)
 
 #===============================================================================
 # xtensor header-only library
 #===============================================================================
 
+# CMake 3.13+ will complain about policy CMP0079 unless it is set explicitly
+if (NOT (CMAKE_VERSION VERSION_LESS 3.13))
+  cmake_policy(SET CMP0079 NEW)
+endif()
+
 add_subdirectory(vendor/xtl)
+set(xtl_DIR ${CMAKE_CURRENT_BINARY_DIR}/vendor/xtl)
 add_subdirectory(vendor/xtensor)
-target_link_libraries(xtensor INTERFACE xtl)
 
 #===============================================================================
 # GSL header-only library
 #===============================================================================
 
-add_library(gsl INTERFACE)
-target_include_directories(gsl INTERFACE vendor/gsl/include)
+set(GSL_LITE_OPT_INSTALL_COMPAT_HEADER ON CACHE BOOL
+  "Install MS-GSL compatibility header <gsl/gsl>")
+add_subdirectory(vendor/gsl-lite)
 
 # Make sure contract violations throw exceptions
-target_compile_definitions(gsl INTERFACE GSL_THROW_ON_CONTRACT_VIOLATION)
+target_compile_definitions(gsl-lite-v1 INTERFACE GSL_THROW_ON_CONTRACT_VIOLATION)
+target_compile_definitions(gsl-lite-v1 INTERFACE gsl_CONFIG_ALLOWS_NONSTRICT_SPAN_COMPARISON=1)
 
 #===============================================================================
 # RPATH information
 #===============================================================================
+
+# Provide install directory variables as defined by GNU coding standards
+include(GNUInstallDirs)
 
 # This block of code ensures that dynamic libraries can be found via the RPATH
 # whether the executable is the original one from the build directory or the
@@ -150,16 +204,14 @@ set(CMAKE_SKIP_BUILD_RPATH  FALSE)
 # (but later on when installing)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH FALSE)
 
-set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
-
 # add the automatically determined parts of the RPATH
 # which point to directories outside the build tree to the install RPATH
 set(CMAKE_INSTALL_RPATH_USE_LINK_PATH TRUE)
 
 # the RPATH to be used when installing, but only if it's not a system directory
-list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_PREFIX}/lib" isSystemDir)
+list(FIND CMAKE_PLATFORM_IMPLICIT_LINK_DIRECTORIES "${CMAKE_INSTALL_FULL_LIBDIR}" isSystemDir)
 if("${isSystemDir}" STREQUAL "-1")
-  set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_PREFIX}/lib")
+  set(CMAKE_INSTALL_RPATH "${CMAKE_INSTALL_FULL_LIBDIR}")
 endif()
 
 #===============================================================================
@@ -167,7 +219,11 @@ endif()
 #===============================================================================
 
 add_library(faddeeva STATIC vendor/faddeeva/Faddeeva.cc)
-target_include_directories(faddeeva PUBLIC vendor/faddeeva/)
+target_include_directories(faddeeva
+  PUBLIC
+    $<INSTALL_INTERFACE:include/faddeeva>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/vendor/faddeeva>
+)
 target_compile_options(faddeeva PRIVATE ${cxxflags})
 
 #===============================================================================
@@ -189,6 +245,7 @@ list(APPEND libopenmc_SOURCES
   src/eigenvalue.cpp
   src/endf.cpp
   src/error.cpp
+  src/event.cpp
   src/initialize.cpp
   src/finalize.cpp
   src/geometry.cpp
@@ -234,6 +291,7 @@ list(APPEND libopenmc_SOURCES
   src/tallies/filter_cellborn.cpp
   src/tallies/filter_cellfrom.cpp
   src/tallies/filter_cell.cpp
+  src/tallies/filter_cell_instance.cpp
   src/tallies/filter_delayedgroup.cpp
   src/tallies/filter_distribcell.cpp
   src/tallies/filter_energyfunc.cpp
@@ -279,7 +337,11 @@ set_target_properties(libopenmc PROPERTIES
   OUTPUT_NAME openmc)
 
 target_include_directories(libopenmc
-  PUBLIC include ${HDF5_INCLUDE_DIRS})
+  PUBLIC
+    $<INSTALL_INTERFACE:include>
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    ${HDF5_INCLUDE_DIRS}
+)
 
 # Set compile flags
 target_compile_options(libopenmc PRIVATE ${cxxflags})
@@ -292,24 +354,25 @@ if (MPI_ENABLED)
 endif()
 
 # Set git SHA1 hash as a compile definition
-execute_process(COMMAND git rev-parse HEAD
-                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-                RESULT_VARIABLE GIT_SHA1_SUCCESS
-                OUTPUT_VARIABLE GIT_SHA1
-                ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
-if(GIT_SHA1_SUCCESS EQUAL 0)
-  target_compile_definitions(libopenmc PRIVATE -DGIT_SHA1="${GIT_SHA1}")
+if(GIT_FOUND)
+  execute_process(COMMAND ${GIT_EXECUTABLE} rev-parse HEAD
+                  WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                  RESULT_VARIABLE GIT_SHA1_SUCCESS
+                  OUTPUT_VARIABLE GIT_SHA1
+                  ERROR_QUIET OUTPUT_STRIP_TRAILING_WHITESPACE)
+  if(GIT_SHA1_SUCCESS EQUAL 0)
+    target_compile_definitions(libopenmc PRIVATE -DGIT_SHA1="${GIT_SHA1}")
+  endif()
 endif()
 
 # target_link_libraries treats any arguments starting with - but not -l as
 # linker flags. Thus, we can pass both linker flags and libraries together.
 target_link_libraries(libopenmc ${ldflags} ${HDF5_LIBRARIES} ${HDF5_HL_LIBRARIES}
-                      pugixml faddeeva xtensor gsl)
+                      pugixml faddeeva xtensor gsl-lite-v1 fmt::fmt)
 
 if(dagmc)
   target_compile_definitions(libopenmc PRIVATE DAGMC)
-  target_link_libraries(libopenmc ${DAGMC_LIBRARIES})
-  target_include_directories(libopenmc PRIVATE ${DAGMC_INCLUDE_DIRS})
+  target_link_libraries(libopenmc dagmc-imported)
 endif()
 
 #===============================================================================
@@ -332,19 +395,33 @@ set_target_properties(
 add_custom_command(TARGET libopenmc POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy
   $<TARGET_FILE:libopenmc>
-  ${CMAKE_CURRENT_SOURCE_DIR}/openmc/capi/$<TARGET_FILE_NAME:libopenmc>
+  ${CMAKE_CURRENT_SOURCE_DIR}/openmc/lib/$<TARGET_FILE_NAME:libopenmc>
   COMMENT "Copying libopenmc to Python module directory")
 
 #===============================================================================
 # Install executable, scripts, manpage, license
 #===============================================================================
 
-install(TARGETS openmc libopenmc
-  RUNTIME DESTINATION bin
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-  )
-install(DIRECTORY src/relaxng DESTINATION share/openmc)
-install(FILES man/man1/openmc.1 DESTINATION share/man/man1)
-install(FILES LICENSE DESTINATION "share/doc/openmc" RENAME copyright)
-install(DIRECTORY include/ DESTINATION include)
+configure_file(cmake/OpenMCConfig.cmake.in "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/OpenMCConfig.cmake" @ONLY)
+
+set(INSTALL_CONFIGDIR ${CMAKE_INSTALL_LIBDIR}/cmake/OpenMC)
+install(TARGETS openmc libopenmc faddeeva
+  EXPORT openmc-targets
+  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+  LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+)
+install(EXPORT openmc-targets
+  FILE OpenMCTargets.cmake
+  NAMESPACE OpenMC::
+  DESTINATION ${INSTALL_CONFIGDIR})
+
+install(DIRECTORY src/relaxng DESTINATION ${CMAKE_INSTALL_DATADIR}/openmc)
+install(FILES "${CMAKE_BINARY_DIR}${CMAKE_FILES_DIRECTORY}/OpenMCConfig.cmake" DESTINATION ${INSTALL_CONFIGDIR})
+install(FILES man/man1/openmc.1 DESTINATION ${CMAKE_INSTALL_MANDIR}/man1)
+install(FILES LICENSE DESTINATION "${CMAKE_INSTALL_DOCDIR}" RENAME copyright)
+install(DIRECTORY include/ DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})
+
+# Copy headers for vendored dependencies (note that all except faddeeva are handled
+# separately since they are managed by CMake)
+install(DIRECTORY vendor/faddeeva DESTINATION ${CMAKE_INSTALL_INCLUDEDIR})

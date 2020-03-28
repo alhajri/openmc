@@ -7,25 +7,29 @@ densities is all done in-memory instead of through the filesystem.
 
 """
 
+import sys
 import copy
 from collections import OrderedDict
-from itertools import chain
 import os
-import time
 import xml.etree.ElementTree as ET
+from warnings import warn
 
-import h5py
 import numpy as np
 from uncertainties import ufloat
 
 import openmc
-import openmc.capi
+import openmc.lib
 from . import comm
 from .abc import TransportOperator, OperatorResult
 from .atom_number import AtomNumber
 from .reaction_rates import ReactionRates
 from .results_list import ResultsList
-from .helpers import DirectReactionRateHelper, ChainFissionHelper
+from .helpers import (
+    DirectReactionRateHelper, ChainFissionHelper, ConstantFissionYieldHelper,
+    FissionYieldCutoffHelper, AveragedFissionYieldHelper, EnergyScoreHelper)
+
+
+__all__ = ["Operator", "OperatorResult"]
 
 
 def _distribute(items):
@@ -75,15 +79,44 @@ class Operator(TransportOperator):
         in the previous results.
     diff_burnable_mats : bool, optional
         Whether to differentiate burnable materials with multiple instances.
+        Volumes are divided equally from the original material volume.
         Default: False.
+    energy_mode : {"energy-deposition", "fission-q"}
+        Indicator for computing system energy. ``"energy-deposition"`` will
+        compute with a single energy deposition tally, taking fission energy
+        release data and heating into consideration. ``"fission-q"`` will
+        use the fission Q values from the depletion chain
     fission_q : dict, optional
         Dictionary of nuclides and their fission Q values [eV]. If not given,
-        values will be pulled from the ``chain_file``.
+        values will be pulled from the ``chain_file``. Only applicable
+        if ``"energy_mode" == "fission-q"``
     dilute_initial : float, optional
         Initial atom density [atoms/cm^3] to add for nuclides that are zero
         in initial condition to ensure they exist in the decay chain.
         Only done for nuclides with reaction rates.
         Defaults to 1.0e3.
+    fission_yield_mode : {"constant", "cutoff", "average"}
+        Key indicating what fission product yield scheme to use. The
+        key determines what fission energy helper is used:
+
+        * "constant": :class:`~openmc.deplete.helpers.ConstantFissionYieldHelper`
+        * "cutoff": :class:`~openmc.deplete.helpers.FissionYieldCutoffHelper`
+        * "average": :class:`~openmc.deplete.helpers.AveragedFissionYieldHelper`
+
+        The documentation on these classes describe their methodology
+        and differences. Default: ``"constant"``
+    fission_yield_opts : dict of str to option, optional
+        Optional arguments to pass to the helper determined by
+        ``fission_yield_mode``. Will be passed directly on to the
+        helper. Passing a value of None will use the defaults for
+        the associated helper.
+    reduce_chain : bool, optional
+        If True, use :meth:`openmc.deplete.Chain.reduce` to reduce the
+        depletion chain up to ``reduce_chain_level``. Default is False.
+    reduce_chain_level : int, optional
+        Depth of the search when reducing the depletion chain. Only used
+        if ``reduce_chain`` evaluates to true. The default value of
+        ``None`` implies no limit on the depth.
 
     Attributes
     ----------
@@ -111,7 +144,7 @@ class Operator(TransportOperator):
     burnable_mats : list of str
         All burnable material IDs
     heavy_metal : float
-        Initial heavy metal inventory
+        Initial heavy metal inventory [g]
     local_mats : list of str
         All burnable material IDs being managed by a single process
     prev_res : ResultsList or None
@@ -120,15 +153,46 @@ class Operator(TransportOperator):
     diff_burnable_mats : bool
         Whether to differentiate burnable materials with multiple instances
     """
+    _fission_helpers = {
+        "average": AveragedFissionYieldHelper,
+        "constant": ConstantFissionYieldHelper,
+        "cutoff": FissionYieldCutoffHelper,
+    }
+
     def __init__(self, geometry, settings, chain_file=None, prev_results=None,
-                 diff_burnable_mats=False, fission_q=None,
-                 dilute_initial=1.0e3):
+                 diff_burnable_mats=False, energy_mode="fission-q",
+                 fission_q=None, dilute_initial=1.0e3,
+                 fission_yield_mode="constant", fission_yield_opts=None,
+                 reduce_chain=False, reduce_chain_level=None):
+        if fission_yield_mode not in self._fission_helpers:
+            raise KeyError(
+                "fission_yield_mode must be one of {}, not {}".format(
+                    ", ".join(self._fission_helpers), fission_yield_mode))
+        if energy_mode == "energy-deposition":
+            if fission_q is not None:
+                warn("Fission Q dictionary not used if energy deposition "
+                     "is used")
+                fission_q = None
+        elif energy_mode != "fission-q":
+            raise ValueError(
+                "energy_mode {} not supported. Must be energy-deposition "
+                "or fission-q".format(energy_mode))
         super().__init__(chain_file, fission_q, dilute_initial, prev_results)
         self.round_number = False
         self.prev_res = None
         self.settings = settings
         self.geometry = geometry
         self.diff_burnable_mats = diff_burnable_mats
+
+        # Reduce the chain before we create more materials
+        if reduce_chain:
+            all_isotopes = set()
+            for material in geometry.get_all_materials().values():
+                if not material.depletable:
+                    continue
+                for name, _dens_percent, _dens_type in material.nuclides:
+                    all_isotopes.add(name)
+            self.chain = self.chain.reduce(all_isotopes, reduce_chain_level)
 
         # Differentiate burnable materials with multiple instances
         if self.diff_burnable_mats:
@@ -176,10 +240,25 @@ class Operator(TransportOperator):
         # Get classes to assist working with tallies
         self._rate_helper = DirectReactionRateHelper(
             self.reaction_rates.n_nuc, self.reaction_rates.n_react)
-        self._energy_helper = ChainFissionHelper()
+        if energy_mode == "fission-q":
+            self._energy_helper = ChainFissionHelper()
+        else:
+            score = "heating" if settings.photon_transport else "heating-local"
+            self._energy_helper = EnergyScoreHelper(score)
+
+        # Select and create fission yield helper
+        fission_helper = self._fission_helpers[fission_yield_mode]
+        fission_yield_opts = (
+            {} if fission_yield_opts is None else fission_yield_opts)
+        self._yield_helper = fission_helper.from_operator(
+            self, **fission_yield_opts)
 
     def __call__(self, vec, power):
         """Runs a simulation.
+
+        Simulation will abort under the following circumstances:
+
+            1) No energy is computed using OpenMC tallies.
 
         Parameters
         ----------
@@ -200,18 +279,16 @@ class Operator(TransportOperator):
         # Update status
         self.number.set_density(vec)
 
-        time_start = time.time()
-
         # Update material compositions and tally nuclides
         self._update_materials()
-        self._rate_helper.nuclides = self._get_tally_nuclides()
-        self._energy_helper.nuclides = self._rate_helper.nuclides
+        nuclides = self._get_tally_nuclides()
+        self._rate_helper.nuclides = nuclides
+        self._energy_helper.nuclides = nuclides
+        self._yield_helper.update_tally_nuclides(nuclides)
 
         # Run OpenMC
-        openmc.capi.reset()
-        openmc.capi.run()
-
-        time_openmc = time.time()
+        openmc.lib.reset()
+        openmc.lib.run()
 
         # Extract results
         op_result = self._unpack_tallies_and_normalize(power)
@@ -227,7 +304,7 @@ class Operator(TransportOperator):
         step : int
             Current depletion step including restarts
         """
-        openmc.capi.statepoint_write(
+        openmc.lib.statepoint_write(
             "openmc_simulation_n{}.h5".format(step),
             write_source=False)
 
@@ -248,7 +325,12 @@ class Operator(TransportOperator):
             # Assign distribmats to cells
             for cell in self.geometry.get_all_material_cells().values():
                 if cell.fill in distribmats and cell.num_instances > 1:
-                    cell.fill = [cell.fill.clone()
+                    mat = cell.fill
+                    if mat.volume is None:
+                        raise RuntimeError("Volume not specified for depletable "
+                                           "material with ID={}.".format(mat.id))
+                    mat.volume /= mat.num_instances
+                    cell.fill = [mat.clone()
                                  for i in range(cell.num_instances)]
 
     def _get_burnable_mats(self):
@@ -401,21 +483,25 @@ class Operator(TransportOperator):
 
         # Initialize OpenMC library
         comm.barrier()
-        openmc.capi.init(intracomm=comm)
+        openmc.lib.init(intracomm=comm)
 
         # Generate tallies in memory
-        materials = [openmc.capi.materials[int(i)]
+        materials = [openmc.lib.materials[int(i)]
                      for i in self.burnable_mats]
         self._rate_helper.generate_tallies(materials, self.chain.reactions)
         self._energy_helper.prepare(
             self.chain.nuclides, self.reaction_rates.index_nuc, materials)
+        # Tell fission yield helper what materials this process is
+        # responsible for
+        self._yield_helper.generate_tallies(
+            materials, tuple(sorted(self._mat_index_map.values())))
 
         # Return number density vector
         return list(self.number.get_mat_slice(np.s_[:]))
 
     def finalize(self):
         """Finalize a depletion simulation and release resources."""
-        openmc.capi.finalize()
+        openmc.lib.finalize()
 
     def _update_materials(self):
         """Updates material compositions in OpenMC on all processes."""
@@ -450,7 +536,7 @@ class Operator(TransportOperator):
                             number_i[mat, nuc] = 0.0
 
                 # Update densities on C API side
-                mat_internal = openmc.capi.materials[int(mat)]
+                mat_internal = openmc.lib.materials[int(mat)]
                 mat_internal.set_densities(nuclides, densities)
 
                 #TODO Update densities on the Python side, otherwise the
@@ -540,7 +626,7 @@ class Operator(TransportOperator):
         rates.fill(0.0)
 
         # Get k and uncertainty
-        k_combined = ufloat(*openmc.capi.keff())
+        k_combined = ufloat(*openmc.lib.keff())
 
         # Extract tally bins
         nuclides = self._rate_helper.nuclides
@@ -554,6 +640,10 @@ class Operator(TransportOperator):
         # Keep track of energy produced from all reactions in eV per source
         # particle
         self._energy_helper.reset()
+        self._yield_helper.unpack()
+
+        # Store fission yield dictionaries
+        fission_yields = []
 
         # Create arrays to store fission Q values, reaction rates, and nuclide
         # numbers, zeroed out in material iteration
@@ -576,6 +666,9 @@ class Operator(TransportOperator):
             tally_rates = self._rate_helper.get_material_rates(
                 mat_index, nuc_ind, react_ind)
 
+            # Compute fission yields for this material
+            fission_yields.append(self._yield_helper.weighted_yields(i))
+
             # Accumulate energy from fission
             self._energy_helper.update(tally_rates[:, fission_ind], mat_index)
 
@@ -586,8 +679,20 @@ class Operator(TransportOperator):
         # J / s / source neutron
         energy = comm.allreduce(self._energy_helper.energy)
 
+        # Guard against divide by zero
+        if energy == 0:
+            if comm.rank == 0:
+                sys.stderr.flush()
+                print(" No energy reported from OpenMC tallies. Do your HDF5 "
+                      "files have heating data?\n", file=sys.stderr, flush=True)
+            comm.barrier()
+            comm.Abort(1)
+
         # Scale reaction rates to obtain units of reactions/sec
         rates *= power / energy
+
+        # Store new fission yields on the chain
+        self.chain.fission_yields = fission_yields
 
         return OperatorResult(k_combined, rates)
 

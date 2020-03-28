@@ -93,11 +93,11 @@ public:
   std::vector<UrrData> urr_data_;
 
   std::vector<std::unique_ptr<Reaction>> reactions_; //!< Reactions
-  std::array<size_t, 892> reaction_index_; //!< Index of each reaction
+  std::array<size_t, 902> reaction_index_; //!< Index of each reaction
   std::vector<int> index_inelastic_scatter_;
 
 private:
-  void create_derived();
+  void create_derived(const Function1D* prompt_photons, const Function1D* delayed_photons);
 
   static int XS_TOTAL;
   static int XS_ABSORPTION;

@@ -41,12 +41,8 @@ class Region(metaclass=ABCMeta):
         else:
             return str(self) == str(other)
 
-    def __ne__(self, other):
-        return not self == other
-
     def get_surfaces(self, surfaces=None):
-        """
-        Recursively find all the surfaces referenced by a region and return them
+        """Recursively find all surfaces referenced by a region and return them
 
         Parameters
         ----------
@@ -64,6 +60,19 @@ class Region(metaclass=ABCMeta):
         for region in self:
             surfaces = region.get_surfaces(surfaces)
         return surfaces
+
+    def remove_redundant_surfaces(self, redundant_surfaces):
+        """Recursively remove all redundant surfaces referenced by this region
+
+        Parameters
+        ----------
+        redundant_surfaces : dict
+            Dictionary mapping redundant surface IDs to class:`openmc.Surface`
+            instances that should replace them.
+
+        """
+        for region in self:
+            region.remove_redundant_surfaces(redundant_surfaces)
 
     @staticmethod
     def from_expression(expression, surfaces):
@@ -213,7 +222,6 @@ class Region(metaclass=ABCMeta):
         # at the end
         return output[0]
 
-    @abstractmethod
     def clone(self, memo=None):
         """Create a copy of this region - each of the surfaces in the
         region's nodes will be cloned and will have new unique IDs.
@@ -230,9 +238,14 @@ class Region(metaclass=ABCMeta):
             The clone of this region
 
         """
-        pass
 
-    @abstractmethod
+        if memo is None:
+            memo = {}
+
+        clone = deepcopy(self)
+        clone[:] = [n.clone(memo) for n in self]
+        return clone
+
     def translate(self, vector, memo=None):
         """Translate region in given direction
 
@@ -250,7 +263,52 @@ class Region(metaclass=ABCMeta):
             Translated region
 
         """
-        pass
+
+        if memo is None:
+            memo = {}
+        return type(self)(n.translate(vector, memo) for n in self)
+
+    def rotate(self, rotation, pivot=(0., 0., 0.), order='xyz', inplace=False,
+               memo=None):
+        r"""Rotate surface by angles provided or by applying matrix directly.
+
+        Parameters
+        ----------
+        rotation : 3-tuple of float, or 3x3 iterable
+            A 3-tuple of angles :math:`(\phi, \theta, \psi)` in degrees where
+            the first element is the rotation about the x-axis in the fixed
+            laboratory frame, the second element is the rotation about the
+            y-axis in the fixed laboratory frame, and the third element is the
+            rotation about the z-axis in the fixed laboratory frame. The
+            rotations are active rotations. Additionally a 3x3 rotation matrix
+            can be specified directly either as a nested iterable or array.
+        pivot : iterable of float, optional
+            (x, y, z) coordinates for the point to rotate about. Defaults to
+            (0., 0., 0.)
+        order : str, optional
+            A string of 'x', 'y', and 'z' in some order specifying which
+            rotation to perform first, second, and third. Defaults to 'xyz'
+            which means, the rotation by angle :math:`\phi` about x will be
+            applied first, followed by :math:`\theta` about y and then
+            :math:`\psi` about z. This corresponds to an x-y-z extrinsic
+            rotation as well as a z-y'-x'' intrinsic rotation using Tait-Bryan
+            angles :math:`(\phi, \theta, \psi)`.
+        inplace : boolean
+            Whether or not to return a new instance of Surface or to modify the
+            coefficients of this Surface in place. Defaults to False.
+        memo : dict or None
+            Dictionary used for memoization
+
+        Returns
+        -------
+        openmc.Region
+            Translated region
+
+        """
+        if memo is None:
+            memo = {}
+        return type(self)(n.rotate(rotation, pivot=pivot, order=order,
+                                   inplace=inplace, memo=memo) for n in self)
 
 
 class Intersection(Region, MutableSequence):
@@ -342,51 +400,6 @@ class Intersection(Region, MutableSequence):
             upper_right[:] = np.minimum(upper_right, upper_right_n)
         return lower_left, upper_right
 
-    def clone(self, memo=None):
-        """Create a copy of this region - each of the surfaces in the
-        intersection's nodes will be cloned and will have new unique IDs.
-
-        Parameters
-        ----------
-        memo : dict or None
-            A nested dictionary of previously cloned objects. This parameter
-            is used internally and should not be specified by the user.
-
-        Returns
-        -------
-        clone : openmc.Intersection
-            The clone of this intersection
-
-        """
-
-        if memo is None:
-            memo = {}
-
-        clone = deepcopy(self)
-        clone[:] = [n.clone(memo) for n in self]
-        return clone
-
-    def translate(self, vector, memo=None):
-        """Translate region in given direction
-
-        Parameters
-        ----------
-        vector : iterable of float
-            Direction in which region should be translated
-        memo : dict or None
-            Dictionary used for memoization. This parameter is used internally
-            and should not be specified by the user.
-
-        Returns
-        -------
-        openmc.Intersection
-            Translated region
-
-        """
-        if memo is None:
-            memo = {}
-        return type(self)(n.translate(vector, memo) for n in self)
-
 
 class Union(Region, MutableSequence):
     r"""Union of two or more regions.
@@ -475,51 +488,6 @@ class Union(Region, MutableSequence):
             upper_right[:] = np.maximum(upper_right, upper_right_n)
         return lower_left, upper_right
 
-    def clone(self, memo=None):
-        """Create a copy of this region - each of the surfaces in the
-        union's nodes will be cloned and will have new unique IDs.
-
-        Parameters
-        ----------
-        memo : dict or None
-            A nested dictionary of previously cloned objects. This parameter
-            is used internally and should not be specified by the user.
-
-        Returns
-        -------
-        clone : openmc.Union
-            The clone of this union
-
-        """
-
-        if memo is None:
-            memo = {}
-
-        clone = deepcopy(self)
-        clone[:] = [n.clone(memo) for n in self]
-        return clone
-
-    def translate(self, vector, memo=None):
-        """Translate region in given direction
-
-        Parameters
-        ----------
-        vector : iterable of float
-            Direction in which region should be translated
-        memo : dict or None
-            Dictionary used for memoization. This parameter is used internally
-            and should not be specified by the user.
-
-        Returns
-        -------
-        openmc.Union
-            Translated region
-
-        """
-        if memo is None:
-            memo = {}
-        return type(self)(n.translate(vector, memo) for n in self)
-
 
 class Complement(Region):
     """Complement of a region.
@@ -527,10 +495,10 @@ class Complement(Region):
     The Complement of an existing :class:`openmc.Region` can be created by using
     the ~ operator as the following example demonstrates:
 
-    >>> xl = openmc.XPlane(x0=-10.0)
-    >>> xr = openmc.XPlane(x0=10.0)
-    >>> yl = openmc.YPlane(y0=-10.0)
-    >>> yr = openmc.YPlane(y0=10.0)
+    >>> xl = openmc.XPlane(-10.0)
+    >>> xr = openmc.XPlane(10.0)
+    >>> yl = openmc.YPlane(-10.0)
+    >>> yr = openmc.YPlane(10.0)
     >>> inside_box = +xl & -xr & +yl & -yr
     >>> outside_box = ~inside_box
     >>> type(outside_box)
@@ -597,8 +565,7 @@ class Complement(Region):
         return temp_region.bounding_box
 
     def get_surfaces(self, surfaces=None):
-        """
-        Recursively find and return all the surfaces referenced by the node
+        """Recursively find and return all the surfaces referenced by the node
 
         Parameters
         ----------
@@ -617,23 +584,20 @@ class Complement(Region):
             surfaces = region.get_surfaces(surfaces)
         return surfaces
 
-    def clone(self, memo=None):
-        """Create a copy of this region - each of the surfaces in the
-        complement's node will be cloned and will have new unique IDs.
+    def remove_redundant_surfaces(self, redundant_surfaces):
+        """Recursively remove all redundant surfaces referenced by this region
 
         Parameters
         ----------
-        memo : dict or None
-            A nested dictionary of previously cloned objects. This parameter
-            is used internally and should not be specified by the user.
-
-        Returns
-        -------
-        clone : openmc.Complement
-            The clone of this complement
+        redundant_surfaces : dict
+            Dictionary mapping redundant surface IDs to class:`openmc.Surface`
+            instances that should replace them.
 
         """
+        for region in self.node:
+            region.remove_redundant_surfaces(redundant_surfaces)
 
+    def clone(self, memo=None):
         if memo is None:
             memo = {}
 
@@ -642,22 +606,13 @@ class Complement(Region):
         return clone
 
     def translate(self, vector, memo=None):
-        """Translate region in given direction
-
-        Parameters
-        ----------
-        vector : iterable of float
-            Direction in which region should be translated
-        memo : dict or None
-            Dictionary used for memoization. This parameter is used internally
-            and should not be specified by the user.
-
-        Returns
-        -------
-        openmc.Complement
-            Translated region
-
-        """
         if memo is None:
             memo = {}
         return type(self)(self.node.translate(vector, memo))
+
+    def rotate(self, rotation, pivot=(0., 0., 0.), order='xyz', inplace=False,
+               memo=None):
+        if memo is None:
+            memo = {}
+        return type(self)(self.node.rotate(rotation, pivot=pivot, order=order,
+                                           inplace=inplace, memo=memo))

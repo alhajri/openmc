@@ -5,6 +5,8 @@
 #include "openmc/container_util.h"
 #include "openmc/eigenvalue.h"
 #include "openmc/error.h"
+#include "openmc/event.h"
+#include "openmc/geometry_aux.h"
 #include "openmc/material.h"
 #include "openmc/message_passing.h"
 #include "openmc/nuclide.h"
@@ -16,17 +18,24 @@
 #include "openmc/source.h"
 #include "openmc/state_point.h"
 #include "openmc/timer.h"
+#include "openmc/tallies/derivative.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/tallies/trigger.h"
+#include "openmc/track_output.h"
 
 #ifdef _OPENMP
 #include <omp.h>
 #endif
 #include "xtensor/xview.hpp"
 
+#ifdef OPENMC_MPI
+#include <mpi.h>
+#endif
+
 #include <algorithm>
 #include <string>
+
 
 //==============================================================================
 // C API functions
@@ -60,15 +69,18 @@ int openmc_simulation_init()
   // Determine how much work each process should do
   calculate_work();
 
-  // Allocate array for matching filter bins
-  #pragma omp parallel
-  {
-    simulation::filter_matches.resize(model::tally_filters.size());
+  // Allocate source and fission banks for eigenvalue simulations
+  if (settings::run_mode == RunMode::EIGENVALUE) {
+    allocate_banks();
   }
 
-  // Allocate source bank, and for eigenvalue simulations also allocate the
-  // fission bank
-  allocate_banks();
+  // If doing an event-based simulation, intialize the particle buffer
+  // and event queues
+  if (settings::event_based) {
+    int64_t event_buffer_length = std::min(simulation::work_per_rank,
+      settings::max_particles_in_flight);
+    init_event_queues(event_buffer_length);
+  }
 
   // Allocate tally results arrays if they're not allocated yet
   for (auto& t : model::tallies) {
@@ -94,14 +106,23 @@ int openmc_simulation_init()
     load_state_point();
     write_message("Resuming simulation...", 6);
   } else {
-    initialize_source();
+    // Only initialize primary source bank for eigenvalue simulations
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      initialize_source();
+    }
+  }
+
+  // If fixed source and using custom source library then need to load
+  if (settings::run_mode == RunMode::FIXED_SOURCE &&
+      !settings::path_source_library.empty()) {
+    load_custom_source_library();
   }
 
   // Display header
   if (mpi::master) {
-    if (settings::run_mode == RUN_MODE_FIXEDSOURCE) {
+    if (settings::run_mode == RunMode::FIXED_SOURCE) {
       header("FIXED SOURCE TRANSPORT SIMULATION", 3);
-    } else if (settings::run_mode == RUN_MODE_EIGENVALUE) {
+    } else if (settings::run_mode == RunMode::EIGENVALUE) {
       header("K EIGENVALUE SIMULATION", 3);
       if (settings::verbosity >= 7) print_columns();
     }
@@ -138,14 +159,15 @@ int openmc_simulation_finalize()
   // Write tally results to tallies.out
   if (settings::output_tallies && mpi::master) write_tallies();
 
-  #pragma omp parallel
-  {
-    simulation::filter_matches.clear();
-  }
-
   // Deactivate all tallies
   for (auto& t : model::tallies) {
     t->active_ = false;
+  }
+
+  // If fixed source and using custom source library then need to close
+  if (settings::run_mode == RunMode::FIXED_SOURCE &&
+      !settings::path_source_library.empty()) {
+    close_custom_source_library();
   }
 
   // Stop timers and show timing statistics
@@ -185,19 +207,11 @@ int openmc_next_batch(int* status)
     // Start timer for transport
     simulation::time_transport.start();
 
-    // ====================================================================
-    // LOOP OVER PARTICLES
-
-    #pragma omp parallel for schedule(runtime)
-    for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
-      simulation::current_work = i_work;
-
-      // grab source particle from bank
-      Particle p;
-      initialize_history(&p, simulation::current_work);
-
-      // transport particle
-      p.transport();
+    // Transport loop
+    if (settings::event_based) {
+      transport_event_based();
+    } else {
+      transport_history_based();
     }
 
     // Accumulate time for transport
@@ -241,7 +255,6 @@ namespace simulation {
 
 int current_batch;
 int current_gen;
-int64_t current_work;
 bool initialized {false};
 double keff {1.0};
 double keff_std;
@@ -263,8 +276,6 @@ const RegularMesh* ufs_mesh {nullptr};
 std::vector<double> k_generation;
 std::vector<int64_t> work_index;
 
-// Threadprivate variables
-bool trace;     //!< flag to show debug information
 
 } // namespace simulation
 
@@ -276,28 +287,8 @@ void allocate_banks()
 {
   // Allocate source bank
   simulation::source_bank.resize(simulation::work_per_rank);
-
-  if (settings::run_mode == RUN_MODE_EIGENVALUE) {
-#ifdef _OPENMP
-    // If OpenMP is being used, each thread needs its own private fission
-    // bank. Since the private fission banks need to be combined at the end of
-    // a generation, there is also a 'master_fission_bank' that is used to
-    // collect the sites from each thread.
-
-    #pragma omp parallel
-    {
-      if (omp_get_thread_num() == 0) {
-        simulation::fission_bank.reserve(3*simulation::work_per_rank);
-      } else {
-        int n_threads = omp_get_num_threads();
-        simulation::fission_bank.reserve(3*simulation::work_per_rank / n_threads);
-      }
-    }
-    simulation::master_fission_bank.reserve(3*simulation::work_per_rank);
-#else
-    simulation::fission_bank.reserve(3*simulation::work_per_rank);
-#endif
-  }
+  // Allocate fission bank
+  init_fission_bank(3*simulation::work_per_rank);
 }
 
 void initialize_batch()
@@ -305,7 +296,7 @@ void initialize_batch()
   // Increment current batch
   ++simulation::current_batch;
 
-  if (settings::run_mode == RUN_MODE_FIXEDSOURCE) {
+  if (settings::run_mode == RunMode::FIXED_SOURCE) {
     int b = simulation::current_batch;
     write_message("Simulating batch " + std::to_string(b), 6);
   }
@@ -352,7 +343,7 @@ void finalize_batch()
     simulation::n_realizations = 0;
   }
 
-  if (settings::run_mode == RUN_MODE_EIGENVALUE) {
+  if (settings::run_mode == RunMode::EIGENVALUE) {
     // Write batch output
     if (mpi::master && settings::verbosity >= 7) print_batch_keff();
   }
@@ -373,7 +364,7 @@ void finalize_batch()
       && !settings::cmfd_run) {
     if (contains(settings::sourcepoint_batch, simulation::current_batch)
         && settings::source_write && !settings::source_separate) {
-      bool b = true;
+      bool b = (settings::run_mode == RunMode::EIGENVALUE);
       openmc_statepoint_write(nullptr, &b);
     } else {
       bool b = false;
@@ -381,31 +372,33 @@ void finalize_batch()
     }
   }
 
-  // Write out a separate source point if it's been specified for this batch
-  if (contains(settings::sourcepoint_batch, simulation::current_batch)
-      && settings::source_write && settings::source_separate) {
-    write_source_point(nullptr);
-  }
+  if (settings::run_mode == RunMode::EIGENVALUE) {
+    // Write out a separate source point if it's been specified for this batch
+    if (contains(settings::sourcepoint_batch, simulation::current_batch)
+        && settings::source_write && settings::source_separate) {
+      write_source_point(nullptr);
+    }
 
-  // Write a continously-overwritten source point if requested.
-  if (settings::source_latest) {
-    auto filename = settings::path_output + "source.h5";
-    write_source_point(filename.c_str());
+    // Write a continously-overwritten source point if requested.
+    if (settings::source_latest) {
+      auto filename = settings::path_output + "source.h5";
+      write_source_point(filename.c_str());
+    }
   }
 }
 
 void initialize_generation()
 {
-  if (settings::run_mode == RUN_MODE_EIGENVALUE) {
+  if (settings::run_mode == RunMode::EIGENVALUE) {
     // Clear out the fission bank
-    simulation::fission_bank.clear();
+    simulation::fission_bank.resize(0);
 
     // Count source sites if using uniform fission source weighting
     if (settings::ufs_on) ufs_count_sites();
 
     // Store current value of tracklength k
     simulation::keff_generation = simulation::global_tallies(
-      K_TRACKLENGTH, RESULT_VALUE);
+      GlobalTally::K_TRACKLENGTH, TallyResult::VALUE);
   }
 }
 
@@ -413,34 +406,27 @@ void finalize_generation()
 {
   auto& gt = simulation::global_tallies;
 
-  // Update global tallies with the omp private accumulation variables
-  #pragma omp parallel
-  {
-    #pragma omp critical(increment_global_tallies)
-    {
-      if (settings::run_mode == RUN_MODE_EIGENVALUE) {
-        gt(K_COLLISION, RESULT_VALUE) += global_tally_collision;
-        gt(K_ABSORPTION, RESULT_VALUE) += global_tally_absorption;
-        gt(K_TRACKLENGTH, RESULT_VALUE) += global_tally_tracklength;
-      }
-      gt(LEAKAGE, RESULT_VALUE) += global_tally_leakage;
-    }
-
-    // reset threadprivate tallies
-    if (settings::run_mode == RUN_MODE_EIGENVALUE) {
-      global_tally_collision = 0.0;
-      global_tally_absorption = 0.0;
-      global_tally_tracklength = 0.0;
-    }
-    global_tally_leakage = 0.0;
+  // Update global tallies with the accumulation variables
+  if (settings::run_mode == RunMode::EIGENVALUE) {
+    gt(GlobalTally::K_COLLISION, TallyResult::VALUE) += global_tally_collision;
+    gt(GlobalTally::K_ABSORPTION, TallyResult::VALUE) += global_tally_absorption;
+    gt(GlobalTally::K_TRACKLENGTH, TallyResult::VALUE) += global_tally_tracklength;
   }
+  gt(GlobalTally::LEAKAGE, TallyResult::VALUE) += global_tally_leakage;
 
+  // reset tallies
+  if (settings::run_mode == RunMode::EIGENVALUE) {
+    global_tally_collision = 0.0;
+    global_tally_absorption = 0.0;
+    global_tally_tracklength = 0.0;
+  }
+  global_tally_leakage = 0.0;
 
-  if (settings::run_mode == RUN_MODE_EIGENVALUE) {
-#ifdef _OPENMP
-    // Join the fission bank from each thread into one global fission bank
-    join_bank_from_threads();
-#endif
+  if (settings::run_mode == RunMode::EIGENVALUE) {	
+    // If using shared memory, stable sort the fission bank (by parent IDs) 
+    // so as to allow for reproducibility regardless of which order particles
+    // are run in.
+    sort_fission_bank();
 
     // Distribute fission bank across processors evenly
     synchronize_bank();
@@ -459,30 +445,42 @@ void finalize_generation()
       }
     }
 
-  } else if (settings::run_mode == RUN_MODE_FIXEDSOURCE) {
-    // For fixed-source mode, we need to sample the external source
-    fill_source_bank_fixedsource();
   }
 }
 
 void initialize_history(Particle* p, int64_t index_source)
 {
   // set defaults
-  p->from_source(&simulation::source_bank[index_source - 1]);
+  if (settings::run_mode == RunMode::FIXED_SOURCE) {
+    // initialize random number seed
+    int64_t id = (simulation::total_gen + overall_generation() - 1)*settings::n_particles +
+      simulation::work_index[mpi::rank] + index_source;
+    uint64_t seed = init_seed(id, STREAM_SOURCE);
+    // sample from external source distribution or custom library then set
+    auto site = sample_external_source(&seed);
+    p->from_source(&site);
+  } else if (settings::run_mode == RunMode::EIGENVALUE) {
+    // set defaults for eigenvalue simulations from primary bank
+    p->from_source(&simulation::source_bank[index_source - 1]);
+  }
+  p->current_work_ = index_source;
 
   // set identifier for particle
   p->id_ = simulation::work_index[mpi::rank] + index_source;
 
+  // set progeny count to zero
+  p->n_progeny_ = 0;
+
   // set random number seed
   int64_t particle_seed = (simulation::total_gen + overall_generation() - 1)
     * settings::n_particles + p->id_;
-  set_particle_seed(particle_seed);
+  init_particle_seeds(particle_seed, p->seeds_);
 
   // set particle trace
-  simulation::trace = false;
+  p->trace_ = false;
   if (simulation::current_batch == settings::trace_batch &&
       simulation::current_gen == settings::trace_gen &&
-      p->id_ == settings::trace_particle) simulation::trace = true;
+      p->id_ == settings::trace_particle) p->trace_ = true;
 
   // Set particle track.
   p->write_track_ = false;
@@ -498,6 +496,38 @@ void initialize_history(Particle* p, int64_t index_source)
       }
     }
   }
+
+  // Display message if high verbosity or trace is on
+  if (settings::verbosity >= 9 || p->trace_) {
+    write_message("Simulating Particle " + std::to_string(p->id_));
+  }
+
+  // Add paricle's starting weight to count for normalizing tallies later
+  #pragma omp atomic
+  simulation::total_weight += p->wgt_;
+
+  initialize_history_partial(p);
+}
+
+void initialize_history_partial(Particle* p)
+{
+  // Force calculation of cross-sections by setting last energy to zero
+  if (settings::run_CE) {
+    for (auto& micro : p->neutron_xs_) micro.last_E = 0.0;
+  }
+
+  // Prepare to write out particle track.
+  if (p->write_track_) add_particle_track(*p);
+
+  // Every particle starts with no accumulated flux derivative.
+  if (!model::active_tallies.empty())
+  {
+    p->flux_derivs_.resize(model::tally_derivs.size(), 0.0);
+    std::fill(p->flux_derivs_.begin(), p->flux_derivs_.end(), 0.0);
+  }
+  
+  // Allocate space for tally filter matches
+  p->filter_matches_.resize(model::tally_filters.size());
 }
 
 int overall_generation()
@@ -568,6 +598,85 @@ void free_memory_simulation()
 {
   simulation::k_generation.clear();
   simulation::entropy.clear();
+}
+
+void transport_history_based_single_particle(Particle& p)
+{
+  while (true) {
+    p.event_calculate_xs();
+    p.event_advance();
+    if (p.collision_distance_ > p.boundary_.distance) {
+      p.event_cross_surface();
+    } else {
+      p.event_collide();
+    }
+    p.event_revive_from_secondary();
+    if (!p.alive_)
+      break;
+  }
+  p.event_death();
+}
+
+void transport_history_based()
+{
+  #pragma omp parallel for schedule(runtime)
+  for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
+    Particle p;
+    initialize_history(&p, i_work);
+    transport_history_based_single_particle(p);
+  }
+}
+
+void transport_event_based()
+{
+  int64_t remaining_work = simulation::work_per_rank;
+  int64_t source_offset = 0;
+
+  // To cap the total amount of memory used to store particle object data, the
+  // number of particles in flight at any point in time can bet set. In the case
+  // that the maximum in flight particle count is lower than the total number
+  // of particles that need to be run this iteration, the event-based transport
+  // loop is executed multiple times until all particles have been completed.
+  while (remaining_work > 0) {
+    // Figure out # of particles to run for this subiteration
+    int64_t n_particles = std::min(remaining_work, settings::max_particles_in_flight);
+
+    // Initialize all particle histories for this subiteration
+    process_init_events(n_particles, source_offset);
+
+    // Event-based transport loop
+    while (true) {
+      // Determine which event kernel has the longest queue
+      int64_t max = std::max({
+        simulation::calculate_fuel_xs_queue.size(),
+        simulation::calculate_nonfuel_xs_queue.size(),
+        simulation::advance_particle_queue.size(),
+        simulation::surface_crossing_queue.size(),
+        simulation::collision_queue.size()});
+
+      // Execute event with the longest queue
+      if (max == 0) {
+        break;
+      } else if (max == simulation::calculate_fuel_xs_queue.size()) {
+        process_calculate_xs_events(simulation::calculate_fuel_xs_queue);
+      } else if (max == simulation::calculate_nonfuel_xs_queue.size()) {
+        process_calculate_xs_events(simulation::calculate_nonfuel_xs_queue);
+      } else if (max == simulation::advance_particle_queue.size()) {
+        process_advance_particle_events();
+      } else if (max == simulation::surface_crossing_queue.size()) {
+        process_surface_crossing_events();
+      } else if (max == simulation::collision_queue.size()) {
+        process_collision_events();
+      }
+    }
+    
+    // Execute death event for all particles
+    process_death_events(n_particles);
+
+    // Adjust remaining work and source offset variables
+    remaining_work -= n_particles;
+    source_offset += n_particles;
+  }
 }
 
 } // namespace openmc

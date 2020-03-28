@@ -1,4 +1,5 @@
 from collections.abc import Iterable, MutableSequence, Mapping
+from enum import Enum
 from pathlib import Path
 from numbers import Real, Integral
 import warnings
@@ -11,11 +12,19 @@ from openmc._xml import clean_indentation, get_text
 import openmc.checkvalue as cv
 from openmc import VolumeCalculation, Source, RegularMesh
 
-_RUN_MODES = ['eigenvalue', 'fixed source', 'plot', 'volume', 'particle restart']
+
+class RunMode(Enum):
+    EIGENVALUE = 'eigenvalue'
+    FIXED_SOURCE = 'fixed source'
+    PLOT = 'plot'
+    VOLUME = 'volume'
+    PARTICLE_RESTART = 'particle restart'
+
+
 _RES_SCAT_METHODS = ['dbrc', 'rvs']
 
 
-class Settings(object):
+class Settings:
     """Settings used for an OpenMC simulation.
 
     Attributes
@@ -40,6 +49,10 @@ class Settings(object):
         below which particle type will be killed.
     dagmc : bool
         Indicate that a CAD-based DAGMC geometry will be used.
+    delayed_photon_scaling : bool
+        Indicate whether to scale the fission photon yield by (EGP + EGD)/EGP
+        where EGP is the energy release of prompt photons and EGD is the energy
+        release of delayed photons.
     electron_treatment : {'led', 'ttb'}
         Whether to deposit all energy from electrons locally ('led') or create
         secondary bremsstrahlung photons ('ttb').
@@ -49,8 +62,15 @@ class Settings(object):
         Mesh to be used to calculate Shannon entropy. If the mesh dimensions are
         not specified. OpenMC assigns a mesh such that 20 source sites per mesh
         cell are to be expected on average.
+    event_based : bool
+        Indicate whether to use event-based parallelism instead of the default
+        history-based parallelism.
     generations_per_batch : int
         Number of generations per batch
+    max_lost_particles : int
+        Maximum number of lost particles
+    rel_max_lost_particles : int
+        Maximum number of lost particles, relative to the total number of particles
     inactive : int
         Number of inactive batches
     keff_trigger : dict
@@ -61,6 +81,12 @@ class Settings(object):
         relative error used.
     log_grid_bins : int
         Number of bins for logarithmic energy grid search
+    material_cell_offsets : bool
+        Generate an "offset table" for material cells by default. These tables
+        are necessary when a particular instance of a cell needs to be tallied.
+    max_particles_in_flight : int
+        Number of neutrons to run concurrently when using event-based
+        parallelism.
     max_order : None or int
         Maximum scattering order to apply globally when in multi-group mode.
     no_reduce : bool
@@ -157,12 +183,12 @@ class Settings(object):
     """
 
     def __init__(self):
-
-        # Run mode subelement (default is 'eigenvalue')
-        self._run_mode = 'eigenvalue'
+        self._run_mode = RunMode.EIGENVALUE
         self._batches = None
         self._generations_per_batch = None
         self._inactive = None
+        self._max_lost_particles = None
+        self._rel_max_lost_particles = None
         self._particles = None
         self._keff_trigger = None
 
@@ -216,13 +242,18 @@ class Settings(object):
             VolumeCalculation, 'volume calculations')
 
         self._create_fission_neutrons = None
+        self._delayed_photon_scaling = None
+        self._material_cell_offsets = None
         self._log_grid_bins = None
 
         self._dagmc = False
 
+        self._event_based = None
+        self._max_particles_in_flight = None
+
     @property
     def run_mode(self):
-        return self._run_mode
+        return self._run_mode.value
 
     @property
     def batches(self):
@@ -235,6 +266,14 @@ class Settings(object):
     @property
     def inactive(self):
         return self._inactive
+
+    @property
+    def max_lost_particles(self):
+        return self._max_lost_particles
+
+    @property
+    def rel_max_lost_particles(self):
+        return self._rel_max_lost_particles
 
     @property
     def particles(self):
@@ -353,6 +392,14 @@ class Settings(object):
         return self._create_fission_neutrons
 
     @property
+    def delayed_photon_scaling(self):
+        return self._delayed_photon_scaling
+
+    @property
+    def material_cell_offsets(self):
+        return self._material_cell_offsets
+
+    @property
     def log_grid_bins(self):
         return self._log_grid_bins
 
@@ -360,10 +407,20 @@ class Settings(object):
     def dagmc(self):
         return self._dagmc
 
+    @property
+    def event_based(self):
+        return self._event_based
+
+    @property
+    def max_particles_in_flight(self):
+        return self._max_particles_in_flight
+
     @run_mode.setter
     def run_mode(self, run_mode):
-        cv.check_value('run mode', run_mode, _RUN_MODES)
-        self._run_mode = run_mode
+        cv.check_value('run mode', run_mode, {x.value for x in RunMode})
+        for mode in RunMode:
+            if mode.value == run_mode:
+                self._run_mode = mode
 
     @batches.setter
     def batches(self, batches):
@@ -382,6 +439,19 @@ class Settings(object):
         cv.check_type('inactive batches', inactive, Integral)
         cv.check_greater_than('inactive batches', inactive, 0, True)
         self._inactive = inactive
+
+    @max_lost_particles.setter
+    def max_lost_particles(self, max_lost_particles):
+        cv.check_type('max_lost_particles', max_lost_particles, Integral)
+        cv.check_greater_than('max_lost_particles', max_lost_particles, 0)
+        self._max_lost_particles = max_lost_particles
+
+    @rel_max_lost_particles.setter
+    def rel_max_lost_particles(self, rel_max_lost_particles):
+        cv.check_type('rel_max_lost_particles', rel_max_lost_particles, Real)
+        cv.check_greater_than('rel_max_lost_particles', rel_max_lost_particles, 0)
+        cv.check_less_than('rel_max_lost_particles', rel_max_lost_particles, 1)
+        self._rel_max_lost_particles = rel_max_lost_particles
 
     @particles.setter
     def particles(self, particles):
@@ -551,10 +621,6 @@ class Settings(object):
     @entropy_mesh.setter
     def entropy_mesh(self, entropy):
         cv.check_type('entropy mesh', entropy, RegularMesh)
-        if entropy.dimension:
-            cv.check_length('entropy mesh dimension', entropy.dimension, 3)
-        cv.check_length('entropy mesh lower-left corner', entropy.lower_left, 3)
-        cv.check_length('entropy mesh upper-right corner', entropy.upper_right, 3)
         self._entropy_mesh = entropy
 
     @trigger_active.setter
@@ -683,6 +749,27 @@ class Settings(object):
                       create_fission_neutrons, bool)
         self._create_fission_neutrons = create_fission_neutrons
 
+    @delayed_photon_scaling.setter
+    def delayed_photon_scaling(self, value):
+        cv.check_type('delayed photon scaling', value, bool)
+        self._delayed_photon_scaling = value
+
+    @event_based.setter
+    def event_based(self, value):
+        cv.check_type('event based', value, bool)
+        self._event_based = value
+
+    @max_particles_in_flight.setter
+    def max_particles_in_flight(self, value):
+        cv.check_type('max particles in flight', value, Integral)
+        cv.check_greater_than('max particles in flight', value, 0)
+        self._max_particles_in_flight = value
+
+    @material_cell_offsets.setter
+    def material_cell_offsets(self, value):
+        cv.check_type('material cell offsets', value, bool)
+        self._material_cell_offsets = value
+
     @log_grid_bins.setter
     def log_grid_bins(self, log_grid_bins):
         cv.check_type('log grid bins', log_grid_bins, Real)
@@ -691,7 +778,7 @@ class Settings(object):
 
     def _create_run_mode_subelement(self, root):
         elem = ET.SubElement(root, "run_mode")
-        elem.text = self._run_mode
+        elem.text = self._run_mode.value
 
     def _create_batches_subelement(self, root):
         if self._batches is not None:
@@ -708,6 +795,16 @@ class Settings(object):
             element = ET.SubElement(root, "inactive")
             element.text = str(self._inactive)
 
+    def _create_max_lost_particles_subelement(self, root):
+        if self._max_lost_particles is not None:
+            element = ET.SubElement(root, "max_lost_particles")
+            element.text = str(self._max_lost_particles)
+
+    def _create_rel_max_lost_particles_subelement(self, root):
+        if self._rel_max_lost_particles is not None:
+            element = ET.SubElement(root, "rel_max_lost_particles")
+            element.text = str(self._rel_max_lost_particles)
+
     def _create_particles_subelement(self, root):
         if self._particles is not None:
             element = ET.SubElement(root, "particles")
@@ -716,10 +813,9 @@ class Settings(object):
     def _create_keff_trigger_subelement(self, root):
         if self._keff_trigger is not None:
             element = ET.SubElement(root, "keff_trigger")
-
-            for key in self._keff_trigger:
+            for key, value in sorted(self._keff_trigger.items()):
                 subelement = ET.SubElement(element, key)
-                subelement.text = str(self._keff_trigger[key]).lower()
+                subelement.text = str(value).lower()
 
     def _create_energy_mode_subelement(self, root):
         if self._energy_mode is not None:
@@ -742,8 +838,7 @@ class Settings(object):
     def _create_output_subelement(self, root):
         if self._output is not None:
             element = ET.SubElement(root, "output")
-
-            for key, value in self._output.items():
+            for key, value in sorted(self._output.items()):
                 subelement = ET.SubElement(element, key)
                 if key in ('summary', 'tallies'):
                     subelement.text = str(value).lower()
@@ -917,6 +1012,26 @@ class Settings(object):
             elem = ET.SubElement(root, "create_fission_neutrons")
             elem.text = str(self._create_fission_neutrons).lower()
 
+    def _create_delayed_photon_scaling_subelement(self, root):
+        if self._delayed_photon_scaling is not None:
+            elem = ET.SubElement(root, "delayed_photon_scaling")
+            elem.text = str(self._delayed_photon_scaling).lower()
+
+    def _create_event_based_subelement(self, root):
+        if self._event_based is not None:
+            elem = ET.SubElement(root, "event_based")
+            elem.text = str(self._event_based).lower()
+
+    def _create_max_particles_in_flight_subelement(self, root):
+        if self._max_particles_in_flight is not None:
+            elem = ET.SubElement(root, "max_particles_in_flight")
+            elem.text = str(self._max_particles_in_flight).lower()
+
+    def _create_material_cell_offsets_subelement(self, root):
+        if self._material_cell_offsets is not None:
+            elem = ET.SubElement(root, "material_cell_offsets")
+            elem.text = str(self._material_cell_offsets).lower()
+
     def _create_log_grid_bins_subelement(self, root):
         if self._log_grid_bins is not None:
             elem = ET.SubElement(root, "log_grid_bins")
@@ -934,6 +1049,8 @@ class Settings(object):
             self._particles_from_xml_element(elem)
             self._batches_from_xml_element(elem)
             self._inactive_from_xml_element(elem)
+            self._max_lost_particles_from_xml_element(elem)
+            self._rel_max_lost_particles_from_xml_element(elem)
             self._generations_per_batch_from_xml_element(elem)
 
     def _run_mode_from_xml_element(self, root):
@@ -955,6 +1072,16 @@ class Settings(object):
         text = get_text(root, 'inactive')
         if text is not None:
             self.inactive = int(text)
+
+    def _max_lost_particles_from_xml_element(self, root):
+        text = get_text(root, 'max_lost_particles')
+        if text is not None:
+            self.max_lost_particles = int(text)
+
+    def _rel_max_lost_particles_from_xml_element(self, root):
+        text = get_text(root, 'rel_max_lost_particles')
+        if text is not None:
+            self.rel_max_lost_particles = float(text)
 
     def _generations_per_batch_from_xml_element(self, root):
         text = get_text(root, 'generations_per_batch')
@@ -981,7 +1108,7 @@ class Settings(object):
                 if value is not None:
                     if key in ('summary', 'tallies'):
                         value = value in ('true', '1')
-                self.output[key] = value
+                    self.output[key] = value
 
     def _statepoint_from_xml_element(self, root):
         elem = root.find('state_point')
@@ -1148,6 +1275,26 @@ class Settings(object):
         if text is not None:
             self.create_fission_neutrons = text in ('true', '1')
 
+    def _delayed_photon_scaling_from_xml_element(self, root):
+        text = get_text(root, 'delayed_photon_scaling')
+        if text is not None:
+            self.delayed_photon_scaling = text in ('true', '1')
+
+    def _event_based_from_xml_element(self, root):
+        text = get_text(root, 'event_based')
+        if text is not None:
+            self.event_based = text in ('true', '1')
+
+    def _max_particles_in_flight_from_xml_element(self, root):
+        text = get_text(root, 'max_particles_in_flight')
+        if text is not None:
+            self.max_particles_in_flight = int(text)
+
+    def _material_cell_offsets_from_xml_element(self, root):
+        text = get_text(root, 'material_cell_offsets')
+        if text is not None:
+            self.material_cell_offsets = text in ('true', '1')
+
     def _log_grid_bins_from_xml_element(self, root):
         text = get_text(root, 'log_grid_bins')
         if text is not None:
@@ -1175,6 +1322,8 @@ class Settings(object):
         self._create_particles_subelement(root_element)
         self._create_batches_subelement(root_element)
         self._create_inactive_subelement(root_element)
+        self._create_max_lost_particles_subelement(root_element)
+        self._create_rel_max_lost_particles_subelement(root_element)
         self._create_generations_per_batch_subelement(root_element)
         self._create_keff_trigger_subelement(root_element)
         self._create_source_subelement(root_element)
@@ -1202,6 +1351,10 @@ class Settings(object):
         self._create_resonance_scattering_subelement(root_element)
         self._create_volume_calcs_subelement(root_element)
         self._create_create_fission_neutrons_subelement(root_element)
+        self._create_delayed_photon_scaling_subelement(root_element)
+        self._create_event_based_subelement(root_element)
+        self._create_max_particles_in_flight_subelement(root_element)
+        self._create_material_cell_offsets_subelement(root_element)
         self._create_log_grid_bins_subelement(root_element)
         self._create_dagmc_subelement(root_element)
 
@@ -1241,6 +1394,8 @@ class Settings(object):
         settings._particles_from_xml_element(root)
         settings._batches_from_xml_element(root)
         settings._inactive_from_xml_element(root)
+        settings._max_lost_particles_from_xml_element(root)
+        settings._rel_max_lost_particles_from_xml_element(root)
         settings._generations_per_batch_from_xml_element(root)
         settings._keff_trigger_from_xml_element(root)
         settings._source_from_xml_element(root)
@@ -1267,6 +1422,10 @@ class Settings(object):
         settings._ufs_mesh_from_xml_element(root)
         settings._resonance_scattering_from_xml_element(root)
         settings._create_fission_neutrons_from_xml_element(root)
+        settings._delayed_photon_scaling_from_xml_element(root)
+        settings._event_based_from_xml_element(root)
+        settings._max_particles_in_flight_from_xml_element(root)
+        settings._material_cell_offsets_from_xml_element(root)
         settings._log_grid_bins_from_xml_element(root)
         settings._dagmc_from_xml_element(root)
 

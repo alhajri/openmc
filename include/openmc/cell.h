@@ -2,12 +2,14 @@
 #define OPENMC_CELL_H
 
 #include <cstdint>
+#include <functional> // for hash
 #include <limits>
 #include <memory> // for unique_ptr
 #include <string>
 #include <unordered_map>
 #include <vector>
 
+#include <gsl/gsl>
 #include "hdf5.h"
 #include "pugixml.hpp"
 #include "dagmc.h"
@@ -23,10 +25,11 @@ namespace openmc {
 // Constants
 //==============================================================================
 
-// TODO: Convert to enum
-constexpr int FILL_MATERIAL {1};
-constexpr int FILL_UNIVERSE {2};
-constexpr int FILL_LATTICE {3};
+enum class Fill {
+  MATERIAL,
+  UNIVERSE,
+  LATTICE
+};
 
 // TODO: Convert to enum
 constexpr int32_t OP_LEFT_PAREN   {std::numeric_limits<int32_t>::max()};
@@ -110,7 +113,7 @@ public:
 
   //! Find the oncoming boundary of this cell.
   virtual std::pair<double, int32_t>
-  distance(Position r, Direction u, int32_t on_surface) const = 0;
+  distance(Position r, Direction u, int32_t on_surface, Particle* p) const = 0;
 
   //! Write all information needed to reconstruct the cell to an HDF5 group.
   //! \param group_id An HDF5 group id.
@@ -147,7 +150,7 @@ public:
 
   int32_t id_;                //!< Unique ID
   std::string name_;          //!< User-defined name
-  int type_;                  //!< Material, universe, or lattice
+  Fill type_;                  //!< Material, universe, or lattice
   int32_t universe_;          //!< Universe # this cell is in
   int32_t fill_;              //!< Universe # filling this cell
   int32_t n_instances_{0};    //!< Number of instances of this cell
@@ -179,10 +182,10 @@ public:
 
   //! \brief Rotational tranfsormation of the filled universe.
   //
-  //! The vector is empty if there is no rotation.  Otherwise, the first three
-  //! values are the rotation angles respectively about the x-, y-, and z-, axes
-  //! in degrees.  The next 9 values give the rotation matrix in row-major
-  //! order.
+  //! The vector is empty if there is no rotation. Otherwise, the first 9 values
+  //! give the rotation matrix in row-major order. When the user specifies
+  //! rotation angles about the x-, y- and z- axes in degrees, these values are
+  //! also present at the end of the vector, making it of length 12.
   std::vector<double> rotation_;
 
   std::vector<int32_t> offset_;  //!< Distribcell offset table
@@ -201,7 +204,7 @@ public:
   contains(Position r, Direction u, int32_t on_surface) const;
 
   std::pair<double, int32_t>
-  distance(Position r, Direction u, int32_t on_surface) const;
+  distance(Position r, Direction u, int32_t on_surface, Particle* p) const;
 
   void to_hdf5(hid_t group_id) const;
 
@@ -212,7 +215,26 @@ protected:
   bool contains_complex(Position r, Direction u, int32_t on_surface) const;
   BoundingBox bounding_box_simple() const;
   static BoundingBox bounding_box_complex(std::vector<int32_t> rpn);
-  static void apply_demorgan(std::vector<int32_t>& rpn);
+
+  //! Applies DeMorgan's laws to a section of the RPN
+  //! \param start Starting point for token modification
+  //! \param stop Stopping point for token modification
+  static void apply_demorgan(std::vector<int32_t>::iterator start,
+                             std::vector<int32_t>::iterator stop);
+
+  //! Removes complement operators from the RPN
+  //! \param rpn The rpn to remove complement operators from.
+  static void remove_complement_ops(std::vector<int32_t>& rpn);
+
+  //! Returns the beginning position of a parenthesis block (immediately before
+  //! two surface tokens) in the RPN given a starting position at the end of
+  //! that block (immediately after two surface tokens)
+  //! \param start Starting position of the search
+  //! \param rpn The rpn being searched
+  static std::vector<int32_t>::iterator
+  find_left_parenthesis(std::vector<int32_t>::iterator start,
+                        const std::vector<int32_t>& rpn);
+
 };
 
 //==============================================================================
@@ -226,7 +248,7 @@ public:
   bool contains(Position r, Direction u, int32_t on_surface) const;
 
   std::pair<double, int32_t>
-  distance(Position r, Direction u, int32_t on_surface) const;
+  distance(Position r, Direction u, int32_t on_surface, Particle* p) const;
 
   BoundingBox bounding_box() const;
 
@@ -265,6 +287,26 @@ private:
   //! `surfs_.back()`.  Otherwise, `partitions_[i]` gives cells sandwiched
   //! between `surfs_[i-1]` and `surfs_[i]`.
   std::vector<std::vector<int32_t>> partitions_;
+};
+
+//==============================================================================
+//! Define an instance of a particular cell
+//==============================================================================
+
+struct CellInstance {
+  //! Check for equality
+  bool operator==(const CellInstance& other) const
+  { return index_cell == other.index_cell && instance == other.instance; }
+
+  gsl::index index_cell;
+  gsl::index instance;
+};
+
+struct CellInstanceHash {
+  std::size_t operator()(const CellInstance& k) const
+  {
+    return 4096*k.index_cell + k.instance;
+  }
 };
 
 //==============================================================================

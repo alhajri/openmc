@@ -1,11 +1,15 @@
 
 #include "openmc/cell.h"
 
+#include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <iterator>
 #include <sstream>
 #include <set>
 #include <string>
+
+#include <fmt/core.h>
 #include <gsl/gsl>
 
 #include "openmc/capi.h"
@@ -81,9 +85,8 @@ tokenize(const std::string region_spec) {
       i++;
 
     } else {
-      std::stringstream err_msg;
-      err_msg << "Region specification contains invalid character, \""
-              << region_spec[i] << "\"";
+      auto err_msg = fmt::format(
+        "Region specification contains invalid character, \"{}\"", region_spec[i]);
       fatal_error(err_msg);
     }
   }
@@ -154,10 +157,8 @@ generate_rpn(int32_t cell_id, std::vector<int32_t> infix)
         // If we run out of operators without finding a left parenthesis, it
         // means there are mismatched parentheses.
         if (it == stack.rend()) {
-          std::stringstream err_msg;
-          err_msg << "Mismatched parentheses in region specification for cell "
-                  << cell_id;
-          fatal_error(err_msg);
+          fatal_error(fmt::format(
+            "Mismatched parentheses in region specification for cell {}", cell_id));
         }
         rpn.push_back(stack.back());
         stack.pop_back();
@@ -173,10 +174,8 @@ generate_rpn(int32_t cell_id, std::vector<int32_t> infix)
 
     // If the operator is a parenthesis it is mismatched.
     if (op >= OP_RIGHT_PAREN) {
-      std::stringstream err_msg;
-      err_msg << "Mismatched parentheses in region specification for cell "
-              << cell_id;
-      fatal_error(err_msg);
+      fatal_error(fmt::format(
+        "Mismatched parentheses in region specification for cell {}", cell_id));
     }
 
     rpn.push_back(stack.back());
@@ -194,9 +193,7 @@ void
 Universe::to_hdf5(hid_t universes_group) const
 {
   // Create a group for this universe.
-  std::stringstream group_name;
-  group_name << "universe " << id_;
-  auto group = create_group(universes_group, group_name);
+  auto group = create_group(universes_group, fmt::format("universe {}", id_));
 
   // Write the contained cells.
   if (cells_.size() > 0) {
@@ -245,7 +242,7 @@ Cell::temperature(int32_t instance) const
 void
 Cell::set_temperature(double T, int32_t instance)
 {
-  if (settings::temperature_method == TEMPERATURE_INTERPOLATION) {
+  if (settings::temperature_method == TemperatureMethod::INTERPOLATION) {
     if (T < data::temperature_min) {
       throw std::runtime_error{"Temperature is below minimum temperature at "
         "which data is available."};
@@ -256,8 +253,13 @@ Cell::set_temperature(double T, int32_t instance)
   }
 
   if (instance >= 0) {
+    // If temperature vector is not big enough, resize it first
+    if (sqrtkT_.size() != n_instances_) sqrtkT_.resize(n_instances_, sqrtkT_[0]);
+
+    // Set temperature for the corresponding instance
     sqrtkT_.at(instance) = std::sqrt(K_BOLTZMANN * T);
   } else {
+    // Set temperature for all instances
     for (auto& T_ : sqrtkT_) {
       T_ = std::sqrt(K_BOLTZMANN * T);
     }
@@ -292,19 +294,20 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   bool fill_present = check_for_node(cell_node, "fill");
   bool material_present = check_for_node(cell_node, "material");
   if (!(fill_present || material_present)) {
-    std::stringstream err_msg;
-    err_msg << "Neither material nor fill was specified for cell " << id_;
-    fatal_error(err_msg);
+    fatal_error(fmt::format(
+      "Neither material nor fill was specified for cell {}", id_));
   }
   if (fill_present && material_present) {
-    std::stringstream err_msg;
-    err_msg << "Cell " << id_ << " has both a material and a fill specified; "
-            << "only one can be specified per cell";
-    fatal_error(err_msg);
+    fatal_error(fmt::format("Cell {} has both a material and a fill specified; "
+      "only one can be specified per cell", id_));
   }
 
   if (fill_present) {
     fill_ = std::stoi(get_node_value(cell_node, "fill"));
+    if (fill_ == universe_) {
+      fatal_error(fmt::format("Cell {} is filled with the same universe that"
+        "it is contained in.", id_));
+    }
   } else {
     fill_ = C_NONE;
   }
@@ -325,9 +328,8 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
         }
       }
     } else {
-      std::stringstream err_msg;
-      err_msg << "An empty material element was specified for cell " << id_;
-      fatal_error(err_msg);
+      fatal_error(fmt::format("An empty material element was specified for cell {}",
+        id_));
     }
   }
 
@@ -338,20 +340,16 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
 
     // Make sure this is a material-filled cell.
     if (material_.size() == 0) {
-      std::stringstream err_msg;
-      err_msg << "Cell " << id_ << " was specified with a temperature but "
-           "no material. Temperature specification is only valid for cells "
-           "filled with a material.";
-      fatal_error(err_msg);
+      fatal_error(fmt::format(
+        "Cell {} was specified with a temperature but no material. Temperature"
+        "specification is only valid for cells filled with a material.", id_));
     }
 
     // Make sure all temperatures are non-negative.
     for (auto T : sqrtkT_) {
       if (T < 0) {
-        std::stringstream err_msg;
-        err_msg << "Cell " << id_
-                << " was specified with a negative temperature";
-        fatal_error(err_msg);
+        fatal_error(fmt::format(
+          "Cell {} was specified with a negative temperature", id_));
       }
     }
 
@@ -379,7 +377,7 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
         throw std::runtime_error{"Invalid surface ID " + std::to_string(abs(r))
           + " specified in region for cell " + std::to_string(id_) + "."};
       }
-      r = copysign(it->second + 1, r);
+      r = (r > 0) ? it->second + 1 : -(it->second + 1);
     }
   }
 
@@ -413,17 +411,14 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   // Read the translation vector.
   if (check_for_node(cell_node, "translation")) {
     if (fill_ == C_NONE) {
-      std::stringstream err_msg;
-      err_msg << "Cannot apply a translation to cell " << id_
-              << " because it is not filled with another universe";
-      fatal_error(err_msg);
+      fatal_error(fmt::format("Cannot apply a translation to cell {}"
+        " because it is not filled with another universe", id_));
     }
 
     auto xyz {get_node_array<double>(cell_node, "translation")};
     if (xyz.size() != 3) {
-      std::stringstream err_msg;
-      err_msg << "Non-3D translation vector applied to cell " << id_;
-      fatal_error(err_msg);
+      fatal_error(fmt::format(
+        "Non-3D translation vector applied to cell {}", id_));
     }
     translation_ = xyz;
   }
@@ -431,42 +426,43 @@ CSGCell::CSGCell(pugi::xml_node cell_node)
   // Read the rotation transform.
   if (check_for_node(cell_node, "rotation")) {
     if (fill_ == C_NONE) {
-      std::stringstream err_msg;
-      err_msg << "Cannot apply a rotation to cell " << id_
-              << " because it is not filled with another universe";
-      fatal_error(err_msg);
+      fatal_error(fmt::format("Cannot apply a rotation to cell {}"
+        " because it is not filled with another universe", id_));
     }
 
     auto rot {get_node_array<double>(cell_node, "rotation")};
-    if (rot.size() != 3) {
-      std::stringstream err_msg;
-      err_msg << "Non-3D rotation vector applied to cell " << id_;
-      fatal_error(err_msg);
+    if (rot.size() != 3 && rot.size() != 9) {
+      fatal_error(fmt::format(
+        "Non-3D rotation vector applied to cell {}", id_));
     }
 
-    // Store the rotation angles.
-    rotation_.reserve(12);
-    rotation_.push_back(rot[0]);
-    rotation_.push_back(rot[1]);
-    rotation_.push_back(rot[2]);
-
     // Compute and store the rotation matrix.
-    auto phi = -rot[0] * PI / 180.0;
-    auto theta = -rot[1] * PI / 180.0;
-    auto psi = -rot[2] * PI / 180.0;
-    rotation_.push_back(std::cos(theta) * std::cos(psi));
-    rotation_.push_back(-std::cos(phi) * std::sin(psi)
-                        + std::sin(phi) * std::sin(theta) * std::cos(psi));
-    rotation_.push_back(std::sin(phi) * std::sin(psi)
-                        + std::cos(phi) * std::sin(theta) * std::cos(psi));
-    rotation_.push_back(std::cos(theta) * std::sin(psi));
-    rotation_.push_back(std::cos(phi) * std::cos(psi)
-                        + std::sin(phi) * std::sin(theta) * std::sin(psi));
-    rotation_.push_back(-std::sin(phi) * std::cos(psi)
-                        + std::cos(phi) * std::sin(theta) * std::sin(psi));
-    rotation_.push_back(-std::sin(theta));
-    rotation_.push_back(std::sin(phi) * std::cos(theta));
-    rotation_.push_back(std::cos(phi) * std::cos(theta));
+    rotation_.reserve(rot.size() == 9 ? 9 : 12);
+    if (rot.size() == 3) {
+      double phi = -rot[0] * PI / 180.0;
+      double theta = -rot[1] * PI / 180.0;
+      double psi = -rot[2] * PI / 180.0;
+      rotation_.push_back(std::cos(theta) * std::cos(psi));
+      rotation_.push_back(-std::cos(phi) * std::sin(psi)
+                          + std::sin(phi) * std::sin(theta) * std::cos(psi));
+      rotation_.push_back(std::sin(phi) * std::sin(psi)
+                          + std::cos(phi) * std::sin(theta) * std::cos(psi));
+      rotation_.push_back(std::cos(theta) * std::sin(psi));
+      rotation_.push_back(std::cos(phi) * std::cos(psi)
+                          + std::sin(phi) * std::sin(theta) * std::sin(psi));
+      rotation_.push_back(-std::sin(phi) * std::cos(psi)
+                          + std::cos(phi) * std::sin(theta) * std::sin(psi));
+      rotation_.push_back(-std::sin(theta));
+      rotation_.push_back(std::sin(phi) * std::cos(theta));
+      rotation_.push_back(std::cos(phi) * std::cos(theta));
+
+      // When user specifies angles, write them at end of vector
+      rotation_.push_back(rot[0]);
+      rotation_.push_back(rot[1]);
+      rotation_.push_back(rot[2]);
+    } else {
+      std::copy(rot.begin(), rot.end(), std::back_inserter(rotation_));
+    }
   }
 }
 
@@ -485,7 +481,7 @@ CSGCell::contains(Position r, Direction u, int32_t on_surface) const
 //==============================================================================
 
 std::pair<double, int32_t>
-CSGCell::distance(Position r, Direction u, int32_t on_surface) const
+CSGCell::distance(Position r, Direction u, int32_t on_surface, Particle* p) const
 {
   double min_dist {INFTY};
   int32_t i_surf {std::numeric_limits<int32_t>::max()};
@@ -517,9 +513,7 @@ void
 CSGCell::to_hdf5(hid_t cell_group) const
 {
   // Create a group for this cell.
-  std::stringstream group_name;
-  group_name << "cell " << id_;
-  auto group = create_group(cell_group, group_name);
+  auto group = create_group(cell_group, fmt::format("cell {}", id_));
 
   if (!name_.empty()) {
     write_string(group, "name", name_, false);
@@ -542,15 +536,15 @@ CSGCell::to_hdf5(hid_t cell_group) const
         region_spec << " |";
       } else {
         // Note the off-by-one indexing
-        region_spec << " "
-             << copysign(model::surfaces[abs(token)-1]->id_, token);
+        auto surf_id = model::surfaces[abs(token)-1]->id_;
+        region_spec << " " << ((token > 0) ? surf_id : -surf_id);
       }
     }
     write_string(group, "region", region_spec.str(), false);
   }
 
   // Write fill information.
-  if (type_ == FILL_MATERIAL) {
+  if (type_ == Fill::MATERIAL) {
     write_dataset(group, "fill_type", "material");
     std::vector<int32_t> mat_ids;
     for (auto i_mat : material_) {
@@ -571,18 +565,22 @@ CSGCell::to_hdf5(hid_t cell_group) const
       temps.push_back(sqrtkT_val * sqrtkT_val / K_BOLTZMANN);
     write_dataset(group, "temperature", temps);
 
-  } else if (type_ == FILL_UNIVERSE) {
+  } else if (type_ == Fill::UNIVERSE) {
     write_dataset(group, "fill_type", "universe");
     write_dataset(group, "fill", model::universes[fill_]->id_);
     if (translation_ != Position(0, 0, 0)) {
       write_dataset(group, "translation", translation_);
     }
     if (!rotation_.empty()) {
-      std::array<double, 3> rot {rotation_[0], rotation_[1], rotation_[2]};
-      write_dataset(group, "rotation", rot);
+      if (rotation_.size() == 12) {
+        std::array<double, 3> rot {rotation_[9], rotation_[10], rotation_[11]};
+        write_dataset(group, "rotation", rot);
+      } else {
+        write_dataset(group, "rotation", rotation_);
+      }
     }
 
-  } else if (type_ == FILL_LATTICE) {
+  } else if (type_ == Fill::LATTICE) {
     write_dataset(group, "fill_type", "lattice");
     write_dataset(group, "lattice", model::lattices[fill_]->id_);
   }
@@ -598,81 +596,89 @@ BoundingBox CSGCell::bounding_box_simple() const {
   return bbox;
 }
 
+void CSGCell::apply_demorgan(std::vector<int32_t>::iterator start,
+                             std::vector<int32_t>::iterator stop)
+{
+  while (start < stop) {
+    if (*start < OP_UNION) { *start *= -1; }
+    else if (*start == OP_UNION) { *start = OP_INTERSECTION; }
+    else if (*start == OP_INTERSECTION) { *start = OP_UNION; }
+    start++;
+  }
+}
 
-void CSGCell::apply_demorgan(std::vector<int32_t>& rpn) {
-  for (auto& token : rpn) {
-    if (token < OP_UNION) { token *= -1; }
-    else if (token == OP_UNION) { token = OP_INTERSECTION; }
-    else if (token == OP_INTERSECTION) { token = OP_UNION; }
+std::vector<int32_t>::iterator
+CSGCell::find_left_parenthesis(std::vector<int32_t>::iterator start,
+                               const std::vector<int32_t>& rpn) {
+  // start search at zero
+  int parenthesis_level = 0;
+  auto it = start;
+  while (it != rpn.begin()) {
+    // look at two tokens at a time
+    int32_t one = *it;
+    int32_t two = *(it - 1);
+
+    // decrement parenthesis level if there are two adjacent surfaces
+    if (one < OP_UNION && two < OP_UNION) {
+      parenthesis_level--;
+    // increment if there are two adjacent operators
+    } else if (one >= OP_UNION && two >= OP_UNION) {
+      parenthesis_level++;
+    }
+
+    // if the level gets to zero, return the position
+    if (parenthesis_level == 0) {
+      // move the iterator back one before leaving the loop
+      // so that all tokens in the parenthesis block are included
+      it--;
+      break;
+    }
+
+    // continue loop, one token at a time
+    it--;
+  }
+  return it;
+}
+
+void CSGCell::remove_complement_ops(std::vector<int32_t>& rpn) {
+  auto it = std::find(rpn.begin(), rpn.end(), OP_COMPLEMENT);
+  while (it != rpn.end()) {
+    // find the opening parenthesis (if any)
+    auto left = find_left_parenthesis(it, rpn);
+    std::vector<int32_t> tmp(left, it+1);
+
+    // apply DeMorgan's law to any surfaces/operators between these
+    // positions in the RPN
+    apply_demorgan(left, it);
+    // remove complement operator
+    rpn.erase(it);
+    // update iterator position
+    it = std::find(rpn.begin(), rpn.end(), OP_COMPLEMENT);
   }
 }
 
 BoundingBox CSGCell::bounding_box_complex(std::vector<int32_t> rpn) {
+  // remove complements by adjusting surface signs and operators
+  remove_complement_ops(rpn);
 
-  // if the last operator is a complement op, there is no
-  // sub-region that the complement connects to. This indicates
-  // that the entire region is a complement and we can apply
-  // De Morgan's laws immediately
-  if (rpn.back() == OP_COMPLEMENT) {
-      rpn.pop_back();
-      apply_demorgan(rpn);
-  }
+  std::vector<BoundingBox> stack(rpn.size());
+  int i_stack = -1;
 
-  // reverse the rpn to make popping easier
-  std::reverse(rpn.begin(), rpn.end());
-
-  BoundingBox current = model::surfaces[abs(rpn.back()) - 1]->bounding_box(rpn.back() > 0);
-  rpn.pop_back();
-
-  while (rpn.size()) {
-    // move through the rpn in twos
-    int32_t one = rpn.back(); rpn.pop_back();
-    int32_t two = rpn.back(); rpn.pop_back();
-
-    // the first token should always be a surface
-    Expects(one < OP_UNION);
-
-    if (two >= OP_UNION) {
-      if (two == OP_UNION) {
-        current |= model::surfaces[abs(one)-1]->bounding_box(one > 0);
-      } else if (two == OP_INTERSECTION) {
-        current &= model::surfaces[abs(one)-1]->bounding_box(one > 0);
-      }
+  for (auto& token : rpn) {
+    if (token == OP_UNION) {
+      stack[i_stack - 1] = stack[i_stack - 1] | stack[i_stack];
+      i_stack--;
+    } else if (token == OP_INTERSECTION) {
+      stack[i_stack - 1] = stack[i_stack - 1] & stack[i_stack];
+      i_stack--;
     } else {
-      // two surfaces in a row (left parenthesis),
-      // create sub-rpn for region in parenthesis
-      std::vector<int32_t> subrpn;
-      subrpn.push_back(one);
-      subrpn.push_back(two);
-      // add until last two tokens in the sub-rpn are operators
-      // (indicates a right parenthesis)
-      while (!((subrpn.back() >= OP_UNION) && (*(subrpn.rbegin() + 1) >= OP_UNION))) {
-        subrpn.push_back(rpn.back());
-        rpn.pop_back();
-      }
-
-      // handle complement case using De Morgan's laws
-      if (subrpn.back() == OP_COMPLEMENT) {
-        subrpn.pop_back();
-        apply_demorgan(subrpn);
-        subrpn.push_back(rpn.back());
-        rpn.pop_back();
-      }
-      // save the last operator, tells us how to combine this region
-      // with our current bounding box
-      int32_t op = subrpn.back(); subrpn.pop_back();
-      // get bounding box for the subrpn
-      BoundingBox sub_box = bounding_box_complex(subrpn);
-      // combine the sub-rpn bounding box with our current cell box
-      if (op == OP_UNION) {
-        current |= sub_box;
-      } else if (op == OP_INTERSECTION) {
-        current &= sub_box;
-      }
+      i_stack++;
+      stack[i_stack] = model::surfaces[abs(token) - 1]->bounding_box(token > 0);
     }
   }
 
-  return current;
+  Ensures(i_stack == 0);
+  return stack.front();
 }
 
 BoundingBox CSGCell::bounding_box() const {
@@ -759,13 +765,13 @@ CSGCell::contains_complex(Position r, Direction u, int32_t on_surface) const
 DAGCell::DAGCell() : Cell{} {};
 
 std::pair<double, int32_t>
-DAGCell::distance(Position r, Direction u, int32_t on_surface) const
+DAGCell::distance(Position r, Direction u, int32_t on_surface, Particle* p) const
 {
   // if we've changed direction or we're not on a surface,
   // reset the history and update last direction
-  if (u != simulation::last_dir || on_surface == 0) {
-    simulation::history.reset();
-    simulation::last_dir = u;
+  if (u != p->last_dir_ || on_surface == 0) {
+    p->history_.reset();
+    p->last_dir_ = u;
   }
 
   moab::ErrorCode rval;
@@ -774,7 +780,7 @@ DAGCell::distance(Position r, Direction u, int32_t on_surface) const
   double dist;
   double pnt[3] = {r.x, r.y, r.z};
   double dir[3] = {u.x, u.y, u.z};
-  rval = dagmc_ptr_->ray_fire(vol, pnt, dir, hit_surf, dist, &simulation::history);
+  rval = dagmc_ptr_->ray_fire(vol, pnt, dir, hit_surf, dist, &p->history_);
   MB_CHK_ERR_CONT(rval);
   int surf_idx;
   if (hit_surf != 0) {
@@ -984,9 +990,7 @@ void read_cells(pugi::xml_node node)
     if (search == model::cell_map.end()) {
       model::cell_map[id] = i;
     } else {
-      std::stringstream err_msg;
-      err_msg << "Two or more cells use the same unique ID: " << id;
-      fatal_error(err_msg);
+      fatal_error(fmt::format("Two or more cells use the same unique ID: {}", id));
     }
   }
 
@@ -1020,8 +1024,8 @@ openmc_cell_get_fill(int32_t index, int* type, int32_t** indices, int32_t* n)
 {
   if (index >= 0 && index < model::cells.size()) {
     Cell& c {*model::cells[index]};
-    *type = c.type_;
-    if (c.type_ == FILL_MATERIAL) {
+    *type = static_cast<int>(c.type_);
+    if (c.type_ == Fill::MATERIAL) {
       *indices = c.material_.data();
       *n = c.material_.size();
     } else {
@@ -1039,10 +1043,11 @@ extern "C" int
 openmc_cell_set_fill(int32_t index, int type, int32_t n,
                      const int32_t* indices)
 {
+  Fill filltype = static_cast<Fill>(type);
   if (index >= 0 && index < model::cells.size()) {
     Cell& c {*model::cells[index]};
-    if (type == FILL_MATERIAL) {
-      c.type_ = FILL_MATERIAL;
+    if (filltype == Fill::MATERIAL) {
+      c.type_ = Fill::MATERIAL;
       c.material_.clear();
       for (int i = 0; i < n; i++) {
         int i_mat = indices[i];
@@ -1056,10 +1061,10 @@ openmc_cell_set_fill(int32_t index, int type, int32_t n,
         }
       }
       c.material_.shrink_to_fit();
-    } else if (type == FILL_UNIVERSE) {
-      c.type_ = FILL_UNIVERSE;
+    } else if (filltype == Fill::UNIVERSE) {
+      c.type_ = Fill::UNIVERSE;
     } else {
-      c.type_ = FILL_LATTICE;
+      c.type_ = Fill::LATTICE;
     }
   } else {
     set_errmsg("Index in cells array is out of bounds.");

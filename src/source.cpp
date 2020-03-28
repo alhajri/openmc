@@ -1,8 +1,16 @@
 #include "openmc/source.h"
 
-#include <algorithm> // for move
-#include <sstream> // for stringstream
+#if defined (__unix__) || (defined (__APPLE__) && defined (__MACH__))
+#define HAS_DYNAMIC_LINKING
+#endif
 
+#include <algorithm> // for move
+
+#ifdef HAS_DYNAMIC_LINKING
+#include <dlfcn.h> // for dlopen, dlsym, dlclose, dlerror
+#endif
+
+#include <fmt/core.h>
 #include "xtensor/xadapt.hpp"
 
 #include "openmc/bank.h"
@@ -33,6 +41,15 @@ namespace model {
 std::vector<SourceDistribution> external_sources;
 
 }
+
+namespace {
+
+using sample_t = Particle::Bank (*)(uint64_t* seed);
+sample_t custom_source_function;
+void* custom_source_library;
+
+}
+
 
 //==============================================================================
 // SourceDistribution implementation
@@ -68,11 +85,15 @@ SourceDistribution::SourceDistribution(pugi::xml_node node)
 
     // Check if source file exists
     if (!file_exists(settings::path_source)) {
-      std::stringstream msg;
-      msg << "Source file '" << settings::path_source <<  "' does not exist.";
-      fatal_error(msg);
+      fatal_error(fmt::format("Source file '{}' does not exist.",
+        settings::path_source));
     }
-
+  } else if (check_for_node(node, "library")) {
+    settings::path_source_library = get_node_value(node, "library", false, true);
+    if (!file_exists(settings::path_source_library)) {
+      fatal_error(fmt::format("Source library '{}' does not exist.",
+        settings::path_source_library));
+    }
   } else {
 
     // Spatial distribution for external source
@@ -86,6 +107,10 @@ SourceDistribution::SourceDistribution(pugi::xml_node node)
         type = get_node_value(node_space, "type", true, true);
       if (type == "cartesian") {
         space_ = UPtrSpace{new CartesianIndependent(node_space)};
+      } else if (type == "cylindrical") {
+        space_ = UPtrSpace{new CylindricalIndependent(node_space)};
+      } else if (type == "spherical") {
+        space_ = UPtrSpace{new SphericalIndependent(node_space)};
       } else if (type == "box") {
         space_ = UPtrSpace{new SpatialBox(node_space)};
       } else if (type == "fission") {
@@ -93,9 +118,8 @@ SourceDistribution::SourceDistribution(pugi::xml_node node)
       } else if (type == "point") {
         space_ = UPtrSpace{new SpatialPoint(node_space)};
       } else {
-        std::stringstream msg;
-        msg << "Invalid spatial distribution for external source: " << type;
-        fatal_error(msg);
+        fatal_error(fmt::format(
+          "Invalid spatial distribution for external source: {}", type));
       }
 
     } else {
@@ -119,9 +143,8 @@ SourceDistribution::SourceDistribution(pugi::xml_node node)
       } else if (type == "mu-phi") {
         angle_ = UPtrAngle{new PolarAzimuthal(node_angle)};
       } else {
-        std::stringstream msg;
-        msg << "Invalid angular distribution for external source: " << type;
-        fatal_error(msg);
+        fatal_error(fmt::format(
+          "Invalid angular distribution for external source: {}", type));
       }
 
     } else {
@@ -140,7 +163,7 @@ SourceDistribution::SourceDistribution(pugi::xml_node node)
 }
 
 
-Particle::Bank SourceDistribution::sample() const
+Particle::Bank SourceDistribution::sample(uint64_t* seed) const
 {
   Particle::Bank site;
 
@@ -156,7 +179,7 @@ Particle::Bank SourceDistribution::sample() const
     site.particle = particle_;
 
     // Sample spatial distribution
-    site.r = space_->sample();
+    site.r = space_->sample(seed);
     double xyz[] {site.r.x, site.r.y, site.r.z};
 
     // Now search to see if location exists in geometry
@@ -198,7 +221,7 @@ Particle::Bank SourceDistribution::sample() const
   ++n_accept;
 
   // Sample angle
-  site.u = angle_->sample();
+  site.u = angle_->sample(seed);
 
   // Check for monoenergetic source above maximum particle energy
   auto p = static_cast<int>(particle_);
@@ -216,7 +239,7 @@ Particle::Bank SourceDistribution::sample() const
 
   while (true) {
     // Sample energy spectrum
-    site.E = energy_->sample();
+    site.E = energy_->sample(seed);
 
     // Resample if energy falls outside minimum or maximum particle energy
     if (site.E < data::energy_max[p] && site.E > data::energy_min[p]) break;
@@ -236,13 +259,12 @@ void initialize_source()
 {
   write_message("Initializing source particles...", 5);
 
-  if (settings::path_source != "") {
+  if (!settings::path_source.empty()) {
     // Read the source from a binary file instead of sampling from some
     // assumed source distribution
 
-    std::stringstream msg;
-    msg << "Reading source file from " << settings::path_source << "...";
-    write_message(msg, 6);
+    write_message(fmt::format("Reading source file from {}...",
+      settings::path_source), 6);
 
     // Open the binary file
     hid_t file_id = file_open(settings::path_source, 'r', true);
@@ -261,6 +283,12 @@ void initialize_source()
 
     // Close file
     file_close(file_id);
+  } else if (!settings::path_source_library.empty()) {
+
+    write_message(fmt::format("Sampling from library source {}...",
+      settings::path_source), 6);
+
+    fill_source_bank_custom_source();
 
   } else {
     // Generation source sites from specified distribution in user input
@@ -268,10 +296,10 @@ void initialize_source()
       // initialize random number seed
       int64_t id = simulation::total_gen*settings::n_particles +
         simulation::work_index[mpi::rank] + i + 1;
-      set_particle_seed(id);
+      uint64_t seed = init_seed(id, STREAM_SOURCE);
 
       // sample external source distribution
-      simulation::source_bank[i] = sample_external_source();
+      simulation::source_bank[i] = sample_external_source(&seed);
     }
   }
 
@@ -285,10 +313,12 @@ void initialize_source()
   }
 }
 
-Particle::Bank sample_external_source()
+Particle::Bank sample_external_source(uint64_t* seed)
 {
-  // Set the random number generator to the source stream.
-  prn_set_stream(STREAM_SOURCE);
+  // return values from custom source if using
+  if (!settings::path_source_library.empty()) {
+    return sample_custom_source_library(seed);
+  }
 
   // Determine total source strength
   double total_strength = 0.0;
@@ -298,7 +328,7 @@ Particle::Bank sample_external_source()
   // Sample from among multiple source distributions
   int i = 0;
   if (model::external_sources.size() > 1) {
-    double xi = prn()*total_strength;
+    double xi = prn(seed)*total_strength;
     double c = 0.0;
     for (; i < model::external_sources.size(); ++i) {
       c += model::external_sources[i].strength();
@@ -307,17 +337,14 @@ Particle::Bank sample_external_source()
   }
 
   // Sample source site from i-th source distribution
-  Particle::Bank site {model::external_sources[i].sample()};
+  Particle::Bank site {model::external_sources[i].sample(seed)};
 
-  // If running in MG, convert site % E to group
+  // If running in MG, convert site.E to group
   if (!settings::run_CE) {
-    site.E = lower_bound_index(data::rev_energy_bins.begin(),
-      data::rev_energy_bins.end(), site.E);
-    site.E = data::num_energy_groups - site.E;
+    site.E = lower_bound_index(data::mg.rev_energy_bins_.begin(),
+      data::mg.rev_energy_bins_.end(), site.E);
+    site.E = data::mg.num_energy_groups_ - site.E - 1.;
   }
-
-  // Set the random number generator back to the tracking stream.
-  prn_set_stream(STREAM_TRACKING);
 
   return site;
 }
@@ -327,19 +354,65 @@ void free_memory_source()
   model::external_sources.clear();
 }
 
-void fill_source_bank_fixedsource()
+void load_custom_source_library()
 {
-  if (settings::path_source.empty()) {
-    for (int64_t i = 0; i < simulation::work_per_rank; ++i) {
-      // initialize random number seed
-      int64_t id = (simulation::total_gen + overall_generation()) *
-        settings::n_particles + simulation::work_index[mpi::rank] + i + 1;
-      set_particle_seed(id);
+#ifdef HAS_DYNAMIC_LINKING
 
-      // sample external source distribution
-      simulation::source_bank[i] = sample_external_source();
-    }
+  // Open the library
+  custom_source_library = dlopen(settings::path_source_library.c_str(), RTLD_LAZY);
+  if (!custom_source_library) {
+    fatal_error("Couldn't open source library " + settings::path_source_library);
   }
+
+  // reset errors
+  dlerror();
+
+  // get the function from the library
+  using sample_t = Particle::Bank (*)(uint64_t* seed);
+  custom_source_function = reinterpret_cast<sample_t>(dlsym(custom_source_library, "sample_source"));
+
+  // check for any dlsym errors
+  auto dlsym_error = dlerror();
+  if (dlsym_error) {
+    dlclose(custom_source_library);
+    fatal_error(fmt::format("Couldn't open the sample_source symbol: {}", dlsym_error));
+  }
+
+#else
+  fatal_error("Custom source libraries have not yet been implemented for "
+    "non-POSIX systems");
+#endif
+}
+
+void close_custom_source_library()
+{
+  dlclose(custom_source_library);
+}
+
+Particle::Bank sample_custom_source_library(uint64_t* seed)
+{
+  return custom_source_function(seed);
+}
+
+void fill_source_bank_custom_source()
+{
+  // Load the custom library
+  load_custom_source_library();
+
+  // Generation source sites from specified distribution in the
+  // library source
+  for (int64_t i = 0; i < simulation::work_per_rank; ++i) {
+    // initialize random number seed
+    int64_t id = (simulation::total_gen + overall_generation()) *
+      settings::n_particles + simulation::work_index[mpi::rank] + i + 1;
+     uint64_t seed = init_seed(id, STREAM_SOURCE);
+
+    // sample custom library source
+    simulation::source_bank[i] = sample_custom_source_library(&seed);
+  }
+
+  // release the library
+  close_custom_source_library();
 }
 
 } // namespace openmc

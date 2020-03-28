@@ -2,8 +2,8 @@
 
 #include <algorithm> // for sort, move, min, max, find
 #include <cmath>     // for round, sqrt, abs
-#include <sstream>   // for stringstream
 
+#include <fmt/core.h>
 #include "xtensor/xarray.hpp"
 #include "xtensor/xbuilder.hpp"
 #include "xtensor/xmath.hpp"
@@ -76,7 +76,7 @@ ThermalScattering::ThermalScattering(hid_t group, const std::vector<double>& tem
   }
 
   switch (settings::temperature_method) {
-  case TEMPERATURE_NEAREST:
+  case TemperatureMethod::NEAREST:
     // Determine actual temperatures to read
     for (const auto& T : temperature) {
 
@@ -88,15 +88,13 @@ ThermalScattering::ThermalScattering(hid_t group, const std::vector<double>& tem
           temps_to_read.push_back(std::round(temp_actual));
         }
       } else {
-        std::stringstream msg;
-        msg << "Nuclear data library does not contain cross sections for "
-          << name_ << " at or near " << std::round(T) << " K.";
-        fatal_error(msg);
+        fatal_error(fmt::format("Nuclear data library does not contain cross "
+          "sections for {} at or near {} K.", name_, std::round(T)));
       }
     }
     break;
 
-  case TEMPERATURE_INTERPOLATION:
+  case TemperatureMethod::INTERPOLATION:
     // If temperature interpolation or multipole is selected, get a list of
     // bounding temperatures for each actual temperature present in the model
     for (const auto& T : temperature) {
@@ -115,10 +113,8 @@ ThermalScattering::ThermalScattering(hid_t group, const std::vector<double>& tem
         }
       }
       if (!found) {
-        std::stringstream msg;
-        msg << "Nuclear data library does not contain cross sections for "
-          << name_ << " at temperatures that bound " << std::round(T) << " K.";
-        fatal_error(msg);
+        fatal_error(fmt::format("Nuclear data library does not contain cross "
+          "sections for {} at temperatures that bound {} K.", name_, std::round(T)));
       }
     }
   }
@@ -132,7 +128,7 @@ ThermalScattering::ThermalScattering(hid_t group, const std::vector<double>& tem
 
   for (auto T : temps_to_read) {
     // Get temperature as a string
-    std::string temp_str = std::to_string(T) + "K";
+    std::string temp_str = fmt::format("{}K", T);
 
     // Read exact temperature value
     double kT;
@@ -150,12 +146,13 @@ ThermalScattering::ThermalScattering(hid_t group, const std::vector<double>& tem
 
 void
 ThermalScattering::calculate_xs(double E, double sqrtkT, int* i_temp,
-                                double* elastic, double* inelastic) const
+                                double* elastic, double* inelastic,
+                                uint64_t* seed) const
 {
   // Determine temperature for S(a,b) table
   double kT = sqrtkT*sqrtkT;
   int i;
-  if (settings::temperature_method == TEMPERATURE_NEAREST) {
+  if (settings::temperature_method == TemperatureMethod::NEAREST) {
     // If using nearest temperature, do linear search on temperature
     for (i = 0; i < kTs_.size(); ++i) {
       if (std::abs(kTs_[i] - kT) < K_BOLTZMANN*settings::temperature_tolerance) {
@@ -172,7 +169,7 @@ ThermalScattering::calculate_xs(double E, double sqrtkT, int* i_temp,
 
     // Randomly sample between temperature i and i+1
     double f = (kT - kTs_[i]) / (kTs_[i+1] - kTs_[i]);
-    if (f > prn()) ++i;
+    if (f > prn(seed)) ++i;
   }
 
   // Set temperature index
@@ -210,22 +207,15 @@ ThermalData::ThermalData(hid_t group)
     if (temp == "coherent_elastic") {
       auto xs = dynamic_cast<CoherentElasticXS*>(elastic_.xs.get());
       elastic_.distribution = std::make_unique<CoherentElasticAE>(*xs);
-
-      // Set threshold energy
-      threshold_elastic_ = xs->bragg_edges().back();
-
     } else {
-      auto xs = dynamic_cast<Tabulated1D*>(elastic_.xs.get());
       if (temp == "incoherent_elastic") {
         elastic_.distribution = std::make_unique<IncoherentElasticAE>(dgroup);
       } else if (temp == "incoherent_elastic_discrete") {
+        auto xs = dynamic_cast<Tabulated1D*>(elastic_.xs.get());
         elastic_.distribution = std::make_unique<IncoherentElasticAEDiscrete>(
           dgroup, xs->x()
         );
       }
-
-      // Set threshold energy
-      threshold_elastic_ = xs->x().back();
     }
 
     close_group(elastic_group);
@@ -239,10 +229,6 @@ ThermalData::ThermalData(hid_t group)
     // Read inelastic cross section
     inelastic_.xs = read_function(inelastic_group, "xs");
 
-    // Set inelastic threshold
-    auto xs = dynamic_cast<Tabulated1D*>(inelastic_.xs.get());
-    threshold_inelastic_ = xs->x().back();
-
     // Read angle-energy distribution
     hid_t dgroup = open_group(inelastic_group, "distribution");
     std::string temp;
@@ -250,6 +236,7 @@ ThermalData::ThermalData(hid_t group)
     if (temp == "incoherent_inelastic") {
       inelastic_.distribution = std::make_unique<IncoherentInelasticAE>(dgroup);
     } else if (temp == "incoherent_inelastic_discrete") {
+      auto xs = dynamic_cast<Tabulated1D*>(inelastic_.xs.get());
       inelastic_.distribution = std::make_unique<IncoherentInelasticAEDiscrete>(
         dgroup, xs->x()
       );
@@ -275,13 +262,13 @@ ThermalData::calculate_xs(double E, double* elastic, double* inelastic) const
 
 void
 ThermalData::sample(const NuclideMicroXS& micro_xs, double E,
-                    double* E_out, double* mu)
+                    double* E_out, double* mu, uint64_t* seed)
 {
   // Determine whether inelastic or elastic scattering will occur
-  if (prn() < micro_xs.thermal_elastic / micro_xs.thermal) {
-    elastic_.distribution->sample(E, *E_out, *mu);
+  if (prn(seed) < micro_xs.thermal_elastic / micro_xs.thermal) {
+    elastic_.distribution->sample(E, *E_out, *mu, seed);
   } else {
-    inelastic_.distribution->sample(E, *E_out, *mu);
+    inelastic_.distribution->sample(E, *E_out, *mu, seed);
   }
 
   // Because of floating-point roundoff, it may be possible for mu to be

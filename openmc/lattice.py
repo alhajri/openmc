@@ -3,10 +3,12 @@ from collections import OrderedDict
 from collections.abc import Iterable
 from copy import deepcopy
 from math import sqrt, floor
-from numbers import Real, Integral
+from numbers import Real
 from xml.etree import ElementTree as ET
 
 import numpy as np
+import warnings
+import types
 
 import openmc.checkvalue as cv
 import openmc
@@ -99,187 +101,13 @@ class Lattice(IDManagerMixin, metaclass=ABCMeta):
             Instance of lattice subclass
 
         """
-        lattice_id = int(group.name.split('/')[-1].lstrip('lattice '))
-        name = group['name'][()].decode() if 'name' in group else ''
         lattice_type = group['type'][()].decode()
-
         if lattice_type == 'rectangular':
-            dimension = group['dimension'][...]
-            lower_left = group['lower_left'][...]
-            pitch = group['pitch'][...]
-            outer = group['outer'][()]
-            universe_ids = group['universes'][...]
-
-            # Create the Lattice
-            lattice = openmc.RectLattice(lattice_id, name)
-            lattice.lower_left = lower_left
-            lattice.pitch = pitch
-
-            # If the Universe specified outer the Lattice is not void
-            if outer >= 0:
-                lattice.outer = universes[outer]
-
-            # Build array of Universe pointers for the Lattice
-            uarray = np.empty(universe_ids.shape, dtype=openmc.Universe)
-
-            for z in range(universe_ids.shape[0]):
-                for y in range(universe_ids.shape[1]):
-                    for x in range(universe_ids.shape[2]):
-                        uarray[z, y, x] = universes[universe_ids[z, y, x]]
-
-            # Use 2D NumPy array to store lattice universes for 2D lattices
-            if len(dimension) == 2:
-                uarray = np.squeeze(uarray)
-                uarray = np.atleast_2d(uarray)
-
-            # Set the universes for the lattice
-            lattice.universes = uarray
-
+            return openmc.RectLattice.from_hdf5(group, universes)
         elif lattice_type == 'hexagonal':
-            n_rings = group['n_rings'][()]
-            n_axial = group['n_axial'][()]
-            center = group['center'][()]
-            pitch = group['pitch'][()]
-            outer = group['outer'][()]
-            if 'orientation' in group:
-                orientation = group['orientation'][()].decode()
-            else:
-                orientation = "y"
-
-            universe_ids = group['universes'][()]
-
-            # Create the Lattice
-            lattice = openmc.HexLattice(lattice_id, name)
-            lattice.center = center
-            lattice.pitch = pitch
-            lattice.orientation = orientation
-            # If the Universe specified outer the Lattice is not void
-            if outer >= 0:
-                lattice.outer = universes[outer]
-            if orientation == "y":
-                # Build array of Universe pointers for the Lattice.  Note that
-                # we need to convert between the HDF5's square array of
-                # (x, alpha, z) to the Python API's format of a ragged nested
-                # list of (z, ring, theta).
-                uarray = []
-                for z in range(n_axial):
-                    # Add a list for this axial level.
-                    uarray.append([])
-                    x = n_rings - 1
-                    a = 2*n_rings - 2
-                    for r in range(n_rings - 1, 0, -1):
-                        # Add a list for this ring.
-                        uarray[-1].append([])
-
-                        # Climb down the top-right.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, a, x])
-                            x += 1
-                            a -= 1
-
-                        # Climb down the right.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, a, x])
-                            a -= 1
-
-                        # Climb down the bottom-right.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, a, x])
-                            x -= 1
-
-                        # Climb up the bottom-left.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, a, x])
-                            x -= 1
-                            a += 1
-
-                        # Climb up the left.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, a, x])
-                            a += 1
-
-                        # Climb up the top-left.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, a, x])
-                            x += 1
-
-                        # Move down to the next ring.
-                        a -= 1
-
-                        # Convert the ids into Universe objects.
-                        uarray[-1][-1] = [universes[u_id]
-                                          for u_id in uarray[-1][-1]]
-
-                    # Handle the degenerate center ring separately.
-                    u_id = universe_ids[z, a, x]
-                    uarray[-1].append([universes[u_id]])
-            else:
-                # Build array of Universe pointers for the Lattice.  Note that
-                # we need to convert between the HDF5's square array of
-                # (alpha, y, z) to the Python API's format of a ragged nested
-                # list of (z, ring, theta).
-                uarray = []
-                for z in range(n_axial):
-                    # Add a list for this axial level.
-                    uarray.append([])
-                    a = 2*n_rings - 2
-                    y = n_rings - 1
-                    for r in range(n_rings - 1, 0, -1):
-                        # Add a list for this ring.
-                        uarray[-1].append([])
-
-                        # Climb down the bottom-right.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, y, a])
-                            y -= 1
-
-                        # Climb across the bottom.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, y, a])
-                            a -= 1
-
-                        # Climb up the bottom-left.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, y, a])
-                            a -= 1
-                            y +=1
-
-                        # Climb up the top-left.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, y, a])
-                            y += 1
-
-                        # Climb across the top.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, y, a])
-                            a += 1
-
-                        # Climb down the top-right.
-                        for i in range(r):
-                            uarray[-1][-1].append(universe_ids[z, y, a])
-                            a += 1
-                            y -= 1
-
-                        # Move down to the next ring.
-                        a -= 1
-
-                        # Convert the ids into Universe objects.
-                        uarray[-1][-1] = [universes[u_id]
-                                          for u_id in uarray[-1][-1]]
-
-                    # Handle the degenerate center ring separately.
-                    u_id = universe_ids[z, y, a]
-                    uarray[-1].append([universes[u_id]])
-
-            # Add the universes to the lattice.
-            if len(pitch) == 2:
-                # Lattice is 3D
-                lattice.universes = uarray
-            else:
-                # Lattice is 2D; extract the only axial level
-                lattice.universes = uarray[0]
-
-        return lattice
+            return openmc.HexLattice.from_hdf5(group, universes)
+        else:
+            raise ValueError('Unkown lattice type: {}'.format(lattice_type))
 
     def get_unique_universes(self):
         """Determine all unique universes in the lattice
@@ -332,7 +160,7 @@ class Lattice(IDManagerMixin, metaclass=ABCMeta):
 
         return nuclides
 
-    def get_all_cells(self):
+    def get_all_cells(self, memo=None):
         """Return all cells that are contained within the lattice
 
         Returns
@@ -342,16 +170,22 @@ class Lattice(IDManagerMixin, metaclass=ABCMeta):
             instances
 
         """
-
         cells = OrderedDict()
+
+        if memo and self in memo:
+            return cells
+
+        if memo is not None:
+            memo.add(self)
+
         unique_universes = self.get_unique_universes()
 
-        for universe_id, universe in unique_universes.items():
-            cells.update(universe.get_all_cells())
+        for universe in unique_universes.values():
+            cells.update(universe.get_all_cells(memo))
 
         return cells
 
-    def get_all_materials(self):
+    def get_all_materials(self, memo=None):
         """Return all materials that are contained within the lattice
 
         Returns
@@ -365,9 +199,9 @@ class Lattice(IDManagerMixin, metaclass=ABCMeta):
         materials = OrderedDict()
 
         # Append all Cells in each Cell in the Universe to the dictionary
-        cells = self.get_all_cells()
-        for cell_id, cell in cells.items():
-            materials.update(cell.get_all_materials())
+        cells = self.get_all_cells(memo)
+        for cell in cells.values():
+            materials.update(cell.get_all_materials(memo))
 
         return materials
 
@@ -393,7 +227,7 @@ class Lattice(IDManagerMixin, metaclass=ABCMeta):
         all_universes.update(unique_universes)
 
         # Append all Universes containing each cell to the dictionary
-        for universe_id, universe in unique_universes.items():
+        for universe in unique_universes.values():
             all_universes.update(universe.get_all_universes())
 
         return all_universes
@@ -448,12 +282,18 @@ class Lattice(IDManagerMixin, metaclass=ABCMeta):
                 return []
         return [(self, idx)] + u.find(p)
 
-    def clone(self, memo=None):
+    def clone(self, clone_materials=True, clone_regions=True, memo=None):
         """Create a copy of this lattice with a new unique ID, and clones
         all universes within this lattice.
 
         Parameters
         ----------
+        clone_materials : bool
+            Whether to create separate copies of the materials filling cells
+            contained in this lattice and its outer universe.
+        clone_regions : bool
+            Whether to create separate copies of the regions bounding cells
+            contained in this lattice and its outer universe.
         memo : dict or None
             A nested dictionary of previously cloned objects. This parameter
             is used internally and should not be specified by the user.
@@ -468,25 +308,29 @@ class Lattice(IDManagerMixin, metaclass=ABCMeta):
         if memo is None:
             memo = {}
 
-        # If no nemoize'd clone exists, instantiate one
+        # If no memoize'd clone exists, instantiate one
         if self not in memo:
             clone = deepcopy(self)
             clone.id = None
 
             if self.outer is not None:
-                clone.outer = self.outer.clone(memo)
+                clone.outer = self.outer.clone(clone_materials, clone_regions,
+                     memo)
 
             # Assign universe clones to the lattice clone
             for i in self.indices:
                 if isinstance(self, RectLattice):
-                    clone.universes[i] = self.universes[i].clone(memo)
+                    clone.universes[i] = self.universes[i].clone(
+                         clone_materials, clone_regions, memo)
                 else:
                     if self.ndim == 2:
                         clone.universes[i[0]][i[1]] = \
-                            self.universes[i[0]][i[1]].clone(memo)
+                            self.universes[i[0]][i[1]].clone(clone_materials,
+                                 clone_regions, memo)
                     else:
                         clone.universes[i[0]][i[1]][i[2]] = \
-                            self.universes[i[0]][i[1]][i[2]].clone(memo)
+                            self.universes[i[0]][i[1]][i[2]].clone(
+                            clone_materials, clone_regions, memo)
 
             # Memoize the clone
             memo[self] = clone
@@ -561,29 +405,22 @@ class RectLattice(Lattice):
 
     def __repr__(self):
         string = 'RectLattice\n'
-        string += '{0: <16}{1}{2}\n'.format('\tID', '=\t', self._id)
-        string += '{0: <16}{1}{2}\n'.format('\tName', '=\t', self._name)
-        string += '{0: <16}{1}{2}\n'.format('\tShape', '=\t',
-                                            self.shape)
-        string += '{0: <16}{1}{2}\n'.format('\tLower Left', '=\t',
-                                            self._lower_left)
-        string += '{0: <16}{1}{2}\n'.format('\tPitch', '=\t', self._pitch)
+        string += '{: <16}=\t{}\n'.format('\tID', self._id)
+        string += '{: <16}=\t{}\n'.format('\tName', self._name)
+        string += '{: <16}=\t{}\n'.format('\tShape', self.shape)
+        string += '{: <16}=\t{}\n'.format('\tLower Left', self._lower_left)
+        string += '{: <16}=\t{}\n'.format('\tPitch', self._pitch)
+        string += '{: <16}=\t{}\n'.format(
+            '\tOuter', self._outer._id if self._outer is not None else None)
 
-        if self._outer is not None:
-            string += '{0: <16}{1}{2}\n'.format('\tOuter', '=\t',
-                                                self._outer._id)
-        else:
-            string += '{0: <16}{1}{2}\n'.format('\tOuter', '=\t',
-                                                self._outer)
+        string += '{: <16}\n'.format('\tUniverses')
 
-        string += '{0: <16}\n'.format('\tUniverses')
-
-        # Lattice nested Universe IDs - column major for Fortran
+        # Lattice nested Universe IDs
         for i, universe in enumerate(np.ravel(self._universes)):
-            string += '{0} '.format(universe._id)
+            string += '{} '.format(universe._id)
 
             # Add a newline character every time we reach end of row of cells
-            if (i+1) % self.shape[0] == 0:
+            if (i + 1) % self.shape[0] == 0:
                 string += '\n'
 
         string = string.rstrip('\n')
@@ -753,15 +590,268 @@ class RectLattice(Lattice):
                     0 <= idx[1] < self.shape[1] and
                     0 <= idx[2] < self.shape[2])
 
-    def create_xml_subelement(self, xml_element):
+    def discretize(self, strategy="degenerate",
+                   universes_to_ignore=[],
+                   materials_to_clone=[],
+                   lattice_neighbors=[], key=lambda univ: univ.id):
+        """Discretize the lattice with either a degenerate or a local neighbor
+        symmetry strategy
 
-        # Determine if XML element already contains subelement for this Lattice
-        path = './lattice[@id=\'{0}\']'.format(self._id)
-        test = xml_element.find(path)
+        'Degenerate' clones every universe in the lattice, thus making them all
+        uniquely defined. This is typically required if depletion or thermal
+        hydraulics will make every universe's environment unique.
 
-        # If the element does contain the Lattice subelement, then return
-        if test is not None:
+        'Local neighbor symmetry' groups universes with similar neighborhoods.
+        These clusters of cells and materials provide increased convergence
+        speed to multi-group cross sections tallies. The user can specify
+        the lattice's neighbors to discriminate between two sides of a
+        lattice for example.
+
+        Parameters
+        ----------
+        strategy : {'degenerate', 'lns'}
+            Which strategy to adopt when discretizing the lattice
+        universes_to_ignore : Iterable of Universe
+            Lattice universes that need not be discretized
+        materials_to_clone : Iterable of Material
+            List of materials that should be cloned when discretizing
+        lattice_neighbors : Iterable of Universe
+            List of the lattice's neighbors. By default, if present, the
+            lattice outer universe will be used. The neighbors should be
+            ordered as follows [top left, top, top right, left, right,
+            bottom left, bottom, bottom right]
+        key : function
+            Function of argument a universe that is used to extract a
+            comparison key. This function will be called on each universe's
+            neighbors in the lattice to form a neighbor pattern. This pattern
+            is then used to identify unique neighbor symmetries.
+        """
+
+        # Check routine inputs
+        if self.ndim != 2:
+            raise NotImplementedError("LNS discretization is not implemented "
+                                      "for 1D and 3D lattices")
+
+        cv.check_value('strategy', strategy, ('degenerate', 'lns'))
+        cv.check_type('universes_to_ignore', universes_to_ignore, Iterable,
+                      openmc.Universe)
+        cv.check_type('materials_to_clone', materials_to_clone, Iterable,
+                      openmc.Material)
+        cv.check_type('lattice_neighbors', lattice_neighbors, Iterable,
+                      openmc.Universe)
+        cv.check_value('number of lattice_neighbors', len(lattice_neighbors),
+                       (0, 8))
+        cv.check_type('key', key, types.FunctionType)
+
+        # Use outer universe if neighbors are missing and outer is defined
+        if self.outer is not None and len(lattice_neighbors) == 0:
+            lattice_neighbors = [key(self.outer) for i in range(8)]
+        elif len(lattice_neighbors) == 8:
+            lattice_neighbors = [key(universe) for universe in
+                                 lattice_neighbors]
+
+        # Dictionary that will keep track of where each pattern appears, how
+        # it was rotated and/or symmetrized
+        patterns = {}
+
+        # Initialize pattern array
+        pattern = np.empty(shape=(3, 3), dtype=type(key(self.universes[0][0])))
+
+        # Define an auxiliary function that returns a universe's neighbors
+        # that are outside the lattice
+        def find_edge_neighbors(pattern, i, j):
+
+            # If no neighbors have been specified, start with an empty array
+            if len(lattice_neighbors) == 0:
+                return
+
+            # Left edge
+            if i == 0:
+                pattern[:, 0] = lattice_neighbors[3]
+                if j == 0:
+                    pattern[0, 0] = lattice_neighbors[0]
+                elif j == self.shape[1] - 1:
+                    pattern[2, 0] = lattice_neighbors[5]
+
+            # Bottom edge
+            if j == 0:
+                pattern[0, 1] = lattice_neighbors[1]
+                if i != 0:
+                    pattern[0, 0] = lattice_neighbors[1]
+                if i != self.shape[0] - 1:
+                    pattern[0, 2] = lattice_neighbors[1]
+
+            # Right edge
+            if i == self.shape[0] - 1:
+                pattern[:, 2] = lattice_neighbors[4]
+                if j == 0:
+                    pattern[0, 2] = lattice_neighbors[2]
+                elif j == self.shape[1] - 1:
+                    pattern[2, 2] = lattice_neighbors[7]
+
+            # Top edge
+            if j == self.shape[1] - 1:
+                pattern[2, 1] = lattice_neighbors[6]
+                if i != 0:
+                    pattern[2, 0] = lattice_neighbors[6]
+                if i != self.shape[0] - 1:
+                    pattern[2, 2] = lattice_neighbors[6]
+
+        # Define an auxiliary function that returns a universe's neighbors
+        # among the universes inside the lattice
+        def find_lattice_neighbors(pattern, i, j):
+
+            # Away from left edge
+            if i != 0:
+                if j > 0:
+                    pattern[0, 0] = key(self.universes[j-1][i-1])
+                pattern[1, 0] = key(self.universes[j][i-1])
+                if j < self.shape[1] - 1:
+                    pattern[2, 0] = key(self.universes[j+1][i-1])
+
+            # Away from bottom edge
+            if j != 0:
+                if i > 0:
+                    pattern[0, 0] = key(self.universes[j-1][i-1])
+                pattern[0, 1] = key(self.universes[j-1][i])
+                if i < self.shape[0] - 1:
+                    pattern[0, 2] = key(self.universes[j-1][i+1])
+
+            # Away from right edge
+            if i != self.shape[0] - 1:
+                if j > 0:
+                    pattern[0, 2] = key(self.universes[j-1][i+1])
+                pattern[1, 2] = key(self.universes[j][i+1])
+                if j < self.shape[1] - 1:
+                    pattern[2, 2] = key(self.universes[j+1][i+1])
+
+            # Away from top edge
+            if j != self.shape[1] - 1:
+                if i > 0:
+                    pattern[2, 0] = key(self.universes[j+1][i-1])
+                pattern[2, 1] = key(self.universes[j+1][i])
+                if i < self.shape[0] - 1:
+                    pattern[2, 2] = key(self.universes[j+1][i+1])
+
+        # Analyze lattice, find unique patterns in groups of universes
+        for j in range(self.shape[1]):
+            for i in range(self.shape[0]):
+
+                # Skip universes to ignore
+                if self.universes[j][i] in universes_to_ignore:
+                    continue
+
+                # Create a neighborhood pattern based on the universe's
+                # neighbors in the grid, and lattice's neighbors at the edges
+
+                # Degenerate discretization has all universes be different
+                if strategy == "degenerate":
+                    patterns[(i, j)] = {'locations': [(i, j)]}
+                    continue
+
+                # Find neighbors among lattice's neighbors at the edges
+                find_edge_neighbors(pattern, i, j)
+
+                # Find neighbors among the lattice's universes
+                find_lattice_neighbors(pattern, i, j)
+
+                pattern[1, 1] = key(self.universes[j][i])
+
+                # Look for pattern in dictionary of patterns found
+                found = False
+                for known_pattern, pattern_data in patterns.items():
+
+                    # Look at all rotations of pattern
+                    for rot in range(4):
+                        if not found and tuple(map(tuple, pattern)) ==\
+                             known_pattern:
+                            found = True
+
+                            # Save location of the pattern in the lattice
+                            pattern_data['locations'].append((i, j))
+
+                        # Rotate pattern
+                        pattern = np.rot90(pattern)
+
+                    # Look at transpose of pattern and its rotations
+                    pattern = np.transpose(pattern)
+                    for rot in range(4):
+                        if not found and tuple(map(tuple, pattern)) ==\
+                             known_pattern:
+                            found = True
+
+                            # Save location of the pattern in the lattice
+                            pattern_data['locations'].append((i, j))
+
+                        # Rotate pattern
+                        pattern = np.rot90(pattern)
+
+                    # Transpose pattern back for the next search
+                    pattern = np.transpose(pattern)
+
+                # Create new pattern and add to the patterns dictionary
+                if not found:
+                    patterns[tuple(map(tuple, pattern))] =\
+                         {'locations': [(i, j)]}
+
+        # Discretize lattice
+        for pattern, pattern_data in patterns.items():
+
+            first_pos = pattern_data['locations'][0]
+
+            # Create a clone of the universe, without cloning materials
+            new_universe = self.universes[first_pos[1]][first_pos[0]].clone(
+                 clone_materials=False, clone_regions=False)
+
+            # Replace only the materials in materials_to_clone
+            for material in materials_to_clone:
+                material_cloned = False
+
+                for cell in new_universe.get_all_cells().values():
+
+                    if cell.fill_type == 'material':
+                        if cell.fill.id == material.id:
+
+                            # Only a single clone of each material is necessary
+                            if not material_cloned:
+                                material_clone = material.clone()
+                                material_cloned = True
+
+                            cell.fill = material_clone
+                    elif cell.fill_type == 'distribmat':
+                        raise(ValueError, "Lattice discretization should not "
+                              "be used with distributed materials")
+                    elif len(cell.temperature) > 1 or len(cell.fill) > 1:
+                        raise(ValueError, "Lattice discretization should not "
+                              "be used with distributed cells")
+
+            # Rebuild lattice from list of locations with this pattern
+            for index, location in enumerate(pattern_data['locations']):
+                self.universes[location[1]][location[0]] = new_universe
+
+    def create_xml_subelement(self, xml_element, memo=None):
+        """Add the lattice xml representation to an incoming xml element
+
+        Parameters
+        ----------
+        xml_element : xml.etree.ElementTree.Element
+            XML element to be added to
+
+        memo : set or None
+            A set of object id's representing geometry entities already
+            written to the xml_element. This parameter is used internally
+            and should not be specified by users.
+
+        Returns
+        -------
+        None
+
+        """
+        # If the element already contains the Lattice subelement, then return
+        if memo and self in memo:
             return
+        if memo is not None:
+            memo.add(self)
 
         lattice_subelement = ET.Element("lattice")
         lattice_subelement.set("id", str(self._id))
@@ -777,7 +867,7 @@ class RectLattice(Lattice):
         if self._outer is not None:
             outer = ET.SubElement(lattice_subelement, "outer")
             outer.text = '{0}'.format(self._outer._id)
-            self._outer.create_xml_subelement(xml_element)
+            self._outer.create_xml_subelement(xml_element, memo)
 
         # Export Lattice cell dimensions
         dimension = ET.SubElement(lattice_subelement, "dimension")
@@ -801,7 +891,7 @@ class RectLattice(Lattice):
                         universe_ids += '{0} '.format(universe._id)
 
                         # Create XML subelement for this Universe
-                        universe.create_xml_subelement(xml_element)
+                        universe.create_xml_subelement(xml_element, memo)
 
                     # Add newline character when we reach end of row of cells
                     universe_ids += '\n'
@@ -819,7 +909,7 @@ class RectLattice(Lattice):
                     universe_ids += '{0} '.format(universe._id)
 
                     # Create XML subelement for this Universe
-                    universe.create_xml_subelement(xml_element)
+                    universe.create_xml_subelement(xml_element, memo)
 
                 # Add newline character when we reach end of row of cells
                 universe_ids += '\n'
@@ -869,6 +959,59 @@ class RectLattice(Lattice):
         uarray.shape = shape
         lat.universes = uarray
         return lat
+
+    @classmethod
+    def from_hdf5(cls, group, universes):
+        """Create rectangular lattice from HDF5 group
+
+        Parameters
+        ----------
+        group : h5py.Group
+            Group in HDF5 file
+        universes : dict
+            Dictionary mapping universe IDs to instances of
+            :class:`openmc.Universe`.
+
+        Returns
+        -------
+        openmc.RectLattice
+            Rectangular lattice
+
+        """
+        dimension = group['dimension'][...]
+        lower_left = group['lower_left'][...]
+        pitch = group['pitch'][...]
+        outer = group['outer'][()]
+        universe_ids = group['universes'][...]
+
+        # Create the Lattice
+        lattice_id = int(group.name.split('/')[-1].lstrip('lattice '))
+        name = group['name'][()].decode() if 'name' in group else ''
+        lattice = cls(lattice_id, name)
+        lattice.lower_left = lower_left
+        lattice.pitch = pitch
+
+        # If the Universe specified outer the Lattice is not void
+        if outer >= 0:
+            lattice.outer = universes[outer]
+
+        # Build array of Universe pointers for the Lattice
+        uarray = np.empty(universe_ids.shape, dtype=openmc.Universe)
+
+        for z in range(universe_ids.shape[0]):
+            for y in range(universe_ids.shape[1]):
+                for x in range(universe_ids.shape[2]):
+                    uarray[z, y, x] = universes[universe_ids[z, y, x]]
+
+        # Use 2D NumPy array to store lattice universes for 2D lattices
+        if len(dimension) == 2:
+            uarray = np.squeeze(uarray)
+            uarray = np.atleast_2d(uarray)
+
+        # Set the universes for the lattice
+        lattice.universes = uarray
+
+        return lattice
 
 
 class HexLattice(Lattice):
@@ -1187,20 +1330,16 @@ class HexLattice(Lattice):
 
         """
         if self._orientation == 'x':
-            x = point[0] - (self.center[0] + self.pitch[0]*idx[0] +
-                            0.5*self.pitch[0]*idx[1])
-            y = point[1] - (self.center[1] +
-                            sqrt(0.75)*self.pitch[0]*idx[1])
+            x = point[0] - (self.center[0] + (idx[0] + 0.5*idx[1])*self.pitch[0])
+            y = point[1] - (self.center[1] + sqrt(0.75)*self.pitch[0]*idx[1])
         else:
-            x = point[0] - (self.center[0]
-                            + sqrt(0.75)*self.pitch[0]*idx[0])
-            y = point[1] - (self.center[1]
-                            + (0.5*idx[0] + idx[1])*self.pitch[0])
+            x = point[0] - (self.center[0] + sqrt(0.75)*self.pitch[0]*idx[0])
+            y = point[1] - (self.center[1] + (0.5*idx[0] + idx[1])*self.pitch[0])
 
         if self._num_axial is None:
             z = point[2]
         else:
-            z = point[2] - (self.center[2] + (idx[2] + 0.5 - 0.5*self.num_axial)*
+            z = point[2] - (self.center[2] + (idx[2] + 0.5 - 0.5*self.num_axial) *
                             self.pitch[1])
         return (x, y, z)
 
@@ -1274,14 +1413,12 @@ class HexLattice(Lattice):
         else:
             return g < self.num_rings and 0 <= idx[2] < self.num_axial
 
-    def create_xml_subelement(self, xml_element):
-        # Determine if XML element already contains subelement for this Lattice
-        path = './hex_lattice[@id=\'{0}\']'.format(self._id)
-        test = xml_element.find(path)
-
-        # If the element does contain the Lattice subelement, then return
-        if test is not None:
+    def create_xml_subelement(self, xml_element, memo=None):
+        # If this subelement has already been written, return
+        if memo and self in memo:
             return
+        if memo is not None:
+            memo.add(self)
 
         lattice_subelement = ET.Element("hex_lattice")
         lattice_subelement.set("id", str(self._id))
@@ -1297,7 +1434,7 @@ class HexLattice(Lattice):
         if self._outer is not None:
             outer = ET.SubElement(lattice_subelement, "outer")
             outer.text = '{0}'.format(self._outer._id)
-            self._outer.create_xml_subelement(xml_element)
+            self._outer.create_xml_subelement(xml_element, memo)
 
         lattice_subelement.set("n_rings", str(self._num_rings))
         # If orientation is "x" export it to XML
@@ -1319,13 +1456,13 @@ class HexLattice(Lattice):
             for z in range(self._num_axial):
                 # Initialize the center universe.
                 universe = self._universes[z][-1][0]
-                universe.create_xml_subelement(xml_element)
+                universe.create_xml_subelement(xml_element, memo)
 
                 # Initialize the remaining universes.
                 for r in range(self._num_rings-1):
                     for theta in range(6*(self._num_rings - 1 - r)):
                         universe = self._universes[z][r][theta]
-                        universe.create_xml_subelement(xml_element)
+                        universe.create_xml_subelement(xml_element, memo)
 
                 # Get a string representation of the universe IDs.
                 slices.append(self._repr_axial_slice(self._universes[z]))
@@ -1337,13 +1474,13 @@ class HexLattice(Lattice):
         else:
             # Initialize the center universe.
             universe = self._universes[-1][0]
-            universe.create_xml_subelement(xml_element)
+            universe.create_xml_subelement(xml_element, memo)
 
             # Initialize the remaining universes.
             for r in range(self._num_rings - 1):
                 for theta in range(6*(self._num_rings - 1 - r)):
                     universe = self._universes[r][theta]
-                    universe.create_xml_subelement(xml_element)
+                    universe.create_xml_subelement(xml_element, memo)
 
             # Get a string representation of the universe IDs.
             universe_ids = self._repr_axial_slice(self._universes)
@@ -1899,3 +2036,167 @@ class HexLattice(Lattice):
             return HexLattice._show_indices_x(num_rings)
         else:
             return HexLattice._show_indices_y(num_rings)
+
+    @classmethod
+    def from_hdf5(cls, group, universes):
+        """Create rectangular lattice from HDF5 group
+
+        Parameters
+        ----------
+        group : h5py.Group
+            Group in HDF5 file
+        universes : dict
+            Dictionary mapping universe IDs to instances of
+            :class:`openmc.Universe`.
+
+        Returns
+        -------
+        openmc.RectLattice
+            Rectangular lattice
+
+        """
+        n_rings = group['n_rings'][()]
+        n_axial = group['n_axial'][()]
+        center = group['center'][()]
+        pitch = group['pitch'][()]
+        outer = group['outer'][()]
+        if 'orientation' in group:
+            orientation = group['orientation'][()].decode()
+        else:
+            orientation = "y"
+        universe_ids = group['universes'][()]
+
+        # Create the Lattice
+        lattice_id = int(group.name.split('/')[-1].lstrip('lattice '))
+        name = group['name'][()].decode() if 'name' in group else ''
+        lattice = openmc.HexLattice(lattice_id, name)
+        lattice.center = center
+        lattice.pitch = pitch
+        lattice.orientation = orientation
+        # If the Universe specified outer the Lattice is not void
+        if outer >= 0:
+            lattice.outer = universes[outer]
+        if orientation == "y":
+            # Build array of Universe pointers for the Lattice.  Note that
+            # we need to convert between the HDF5's square array of
+            # (x, alpha, z) to the Python API's format of a ragged nested
+            # list of (z, ring, theta).
+            uarray = []
+            for z in range(n_axial):
+                # Add a list for this axial level.
+                uarray.append([])
+                x = n_rings - 1
+                a = 2*n_rings - 2
+                for r in range(n_rings - 1, 0, -1):
+                    # Add a list for this ring.
+                    uarray[-1].append([])
+
+                    # Climb down the top-right.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, a, x])
+                        x += 1
+                        a -= 1
+
+                    # Climb down the right.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, a, x])
+                        a -= 1
+
+                    # Climb down the bottom-right.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, a, x])
+                        x -= 1
+
+                    # Climb up the bottom-left.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, a, x])
+                        x -= 1
+                        a += 1
+
+                    # Climb up the left.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, a, x])
+                        a += 1
+
+                    # Climb up the top-left.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, a, x])
+                        x += 1
+
+                    # Move down to the next ring.
+                    a -= 1
+
+                    # Convert the ids into Universe objects.
+                    uarray[-1][-1] = [universes[u_id]
+                                        for u_id in uarray[-1][-1]]
+
+                # Handle the degenerate center ring separately.
+                u_id = universe_ids[z, a, x]
+                uarray[-1].append([universes[u_id]])
+        else:
+            # Build array of Universe pointers for the Lattice.  Note that
+            # we need to convert between the HDF5's square array of
+            # (alpha, y, z) to the Python API's format of a ragged nested
+            # list of (z, ring, theta).
+            uarray = []
+            for z in range(n_axial):
+                # Add a list for this axial level.
+                uarray.append([])
+                a = 2*n_rings - 2
+                y = n_rings - 1
+                for r in range(n_rings - 1, 0, -1):
+                    # Add a list for this ring.
+                    uarray[-1].append([])
+
+                    # Climb down the bottom-right.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, y, a])
+                        y -= 1
+
+                    # Climb across the bottom.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, y, a])
+                        a -= 1
+
+                    # Climb up the bottom-left.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, y, a])
+                        a -= 1
+                        y += 1
+
+                    # Climb up the top-left.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, y, a])
+                        y += 1
+
+                    # Climb across the top.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, y, a])
+                        a += 1
+
+                    # Climb down the top-right.
+                    for i in range(r):
+                        uarray[-1][-1].append(universe_ids[z, y, a])
+                        a += 1
+                        y -= 1
+
+                    # Move down to the next ring.
+                    a -= 1
+
+                    # Convert the ids into Universe objects.
+                    uarray[-1][-1] = [universes[u_id]
+                                        for u_id in uarray[-1][-1]]
+
+                # Handle the degenerate center ring separately.
+                u_id = universe_ids[z, y, a]
+                uarray[-1].append([universes[u_id]])
+
+        # Add the universes to the lattice.
+        if len(pitch) == 2:
+            # Lattice is 3D
+            lattice.universes = uarray
+        else:
+            # Lattice is 2D; extract the only axial level
+            lattice.universes = uarray[0]
+
+        return lattice

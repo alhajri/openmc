@@ -2,8 +2,9 @@
 
 #include <array>
 #include <cmath>
-#include <sstream>
 #include <utility>
+
+#include <fmt/core.h>
 
 #include "openmc/error.h"
 #include "openmc/dagmc.h"
@@ -11,17 +12,10 @@
 #include "openmc/settings.h"
 #include "openmc/string_utils.h"
 #include "openmc/xml_interface.h"
+#include "openmc/random_lcg.h"
+#include "openmc/math_functions.h"
 
 namespace openmc {
-
-//==============================================================================
-// Module constant definitions
-//==============================================================================
-
-extern "C" const int BC_TRANSMIT {0};
-extern "C" const int BC_VACUUM {1};
-extern "C" const int BC_REFLECT {2};
-extern "C" const int BC_PERIODIC {3};
 
 //==============================================================================
 // Global variables
@@ -42,10 +36,8 @@ void read_coeffs(pugi::xml_node surf_node, int surf_id, double &c1)
   std::string coeffs = get_node_value(surf_node, "coeffs");
   int n_words = word_count(coeffs);
   if (n_words != 1) {
-    std::stringstream err_msg;
-    err_msg << "Surface " << surf_id << " expects 1 coeff but was given "
-            << n_words;
-    fatal_error(err_msg);
+    fatal_error(fmt::format("Surface {} expects 1 coeff but was given {}",
+      surf_id, n_words));
   }
 
   // Parse the coefficients.
@@ -62,10 +54,8 @@ void read_coeffs(pugi::xml_node surf_node, int surf_id, double &c1, double &c2,
   std::string coeffs = get_node_value(surf_node, "coeffs");
   int n_words = word_count(coeffs);
   if (n_words != 3) {
-    std::stringstream err_msg;
-    err_msg << "Surface " << surf_id << " expects 3 coeffs but was given "
-            << n_words;
-    fatal_error(err_msg);
+    fatal_error(fmt::format("Surface {} expects 3 coeffs but was given {}",
+      surf_id, n_words));
   }
 
   // Parse the coefficients.
@@ -82,10 +72,8 @@ void read_coeffs(pugi::xml_node surf_node, int surf_id, double &c1, double &c2,
   std::string coeffs = get_node_value(surf_node, "coeffs");
   int n_words = word_count(coeffs);
   if (n_words != 4) {
-    std::stringstream err_msg;
-    err_msg << "Surface " << surf_id << " expects 4 coeffs but was given "
-            << n_words;
-    fatal_error(err_msg);
+    fatal_error(fmt::format("Surface {} expects 4 coeffs but was given ",
+      surf_id, n_words));
   }
 
   // Parse the coefficients.
@@ -103,10 +91,8 @@ void read_coeffs(pugi::xml_node surf_node, int surf_id, double &c1, double &c2,
   std::string coeffs = get_node_value(surf_node, "coeffs");
   int n_words = word_count(coeffs);
   if (n_words != 10) {
-    std::stringstream err_msg;
-    err_msg << "Surface " << surf_id << " expects 10 coeffs but was given "
-            << n_words;
-    fatal_error(err_msg);
+    fatal_error(fmt::format("Surface {} expects 10 coeffs but was given {}",
+      surf_id, n_words));
   }
 
   // Parse the coefficients.
@@ -139,25 +125,25 @@ Surface::Surface(pugi::xml_node surf_node)
     std::string surf_bc = get_node_value(surf_node, "boundary", true, true);
 
     if (surf_bc == "transmission" || surf_bc == "transmit" ||surf_bc.empty()) {
-      bc_ = BC_TRANSMIT;
+      bc_ = BoundaryType::TRANSMIT;
 
     } else if (surf_bc == "vacuum") {
-      bc_ = BC_VACUUM;
+      bc_ = BoundaryType::VACUUM;
 
     } else if (surf_bc == "reflective" || surf_bc == "reflect"
                || surf_bc == "reflecting") {
-      bc_ = BC_REFLECT;
+      bc_ = BoundaryType::REFLECT;
+    } else if (surf_bc == "white") {
+      bc_ = BoundaryType::WHITE;
     } else if (surf_bc == "periodic") {
-      bc_ = BC_PERIODIC;
+      bc_ = BoundaryType::PERIODIC;
     } else {
-      std::stringstream err_msg;
-      err_msg << "Unknown boundary condition \"" << surf_bc
-              << "\" specified on surface " << id_;
-      fatal_error(err_msg);
+      fatal_error(fmt::format("Unknown boundary condition \"{}\" specified "
+        "on surface {}", surf_bc, id_));
     }
 
   } else {
-    bc_ = BC_TRANSMIT;
+    bc_ = BoundaryType::TRANSMIT;
   }
 
 }
@@ -180,7 +166,7 @@ Surface::sense(Position r, Direction u) const
 }
 
 Direction
-Surface::reflect(Position r, Direction u) const
+Surface::reflect(Position r, Direction u, Particle* p) const
 {
   // Determine projection of direction onto normal and squared magnitude of
   // normal.
@@ -190,6 +176,27 @@ Surface::reflect(Position r, Direction u) const
 
   // Reflect direction according to normal.
   return u -= (2.0 * projection / magnitude) * n;
+}
+
+Direction
+Surface::diffuse_reflect(Position r, Direction u, uint64_t* seed) const
+{
+  // Diffuse reflect direction according to the normal.
+  // cosine distribution
+
+  Direction n = this->normal(r);
+  n /= n.norm();
+  const double projection = n.dot(u);
+
+  // sample from inverse function, u=sqrt(rand) since p(u)=2u, so F(u)=u^2
+  const double mu = (projection>=0.0) ?
+                  -std::sqrt(prn(seed)) : std::sqrt(prn(seed));
+
+  // sample azimuthal distribution uniformly
+  u = rotate_angle(n, mu, nullptr, seed);
+
+  // normalize the direction
+  return u/u.norm();
 }
 
 CSGSurface::CSGSurface() : Surface{} {};
@@ -204,16 +211,19 @@ CSGSurface::to_hdf5(hid_t group_id) const
   hid_t surf_group = create_group(group_id, group_name);
 
   switch(bc_) {
-    case BC_TRANSMIT :
+    case BoundaryType::TRANSMIT :
       write_string(surf_group, "boundary_type", "transmission", false);
       break;
-    case BC_VACUUM :
+    case BoundaryType::VACUUM :
       write_string(surf_group, "boundary_type", "vacuum", false);
       break;
-    case BC_REFLECT :
+    case BoundaryType::REFLECT :
       write_string(surf_group, "boundary_type", "reflective", false);
       break;
-    case BC_PERIODIC :
+    case BoundaryType::WHITE :
+      write_string(surf_group, "boundary_type", "white", false);
+      break;
+    case BoundaryType::PERIODIC :
       write_string(surf_group, "boundary_type", "periodic", false);
       break;
   }
@@ -264,11 +274,11 @@ Direction DAGSurface::normal(Position r) const
   return dir;
 }
 
-Direction DAGSurface::reflect(Position r, Direction u) const
+Direction DAGSurface::reflect(Position r, Direction u, Particle* p) const
 {
-  simulation::history.reset_to_last_intersection();
-  simulation::last_dir = Surface::reflect(r, u);
-  return simulation::last_dir;
+  p->history_.reset_to_last_intersection();
+  p->last_dir_ = Surface::reflect(r, u, p);
+  return p->last_dir_;
 }
 
 void DAGSurface::to_hdf5(hid_t group_id) const {}
@@ -1151,9 +1161,7 @@ void read_surfaces(pugi::xml_node node)
         model::surfaces.push_back(std::make_unique<SurfaceQuadric>(surf_node));
 
       } else {
-        std::stringstream err_msg;
-        err_msg << "Invalid surface type, \"" << surf_type << "\"";
-        fatal_error(err_msg);
+        fatal_error(fmt::format("Invalid surface type, \"{}\"", surf_type));
       }
     }
   }
@@ -1165,9 +1173,8 @@ void read_surfaces(pugi::xml_node node)
     if (in_map == model::surface_map.end()) {
       model::surface_map[id] = i_surf;
     } else {
-      std::stringstream err_msg;
-      err_msg << "Two or more surfaces use the same unique ID: " << id;
-      fatal_error(err_msg);
+      fatal_error(fmt::format(
+        "Two or more surfaces use the same unique ID: {}", id));
     }
   }
 
@@ -1176,18 +1183,16 @@ void read_surfaces(pugi::xml_node node)
          zmin {INFTY}, zmax {-INFTY};
   int i_xmin, i_xmax, i_ymin, i_ymax, i_zmin, i_zmax;
   for (int i_surf = 0; i_surf < model::surfaces.size(); i_surf++) {
-    if (model::surfaces[i_surf]->bc_ == BC_PERIODIC) {
+    if (model::surfaces[i_surf]->bc_ == Surface::BoundaryType::PERIODIC) {
       // Downcast to the PeriodicSurface type.
       Surface* surf_base = model::surfaces[i_surf].get();
       auto surf = dynamic_cast<PeriodicSurface*>(surf_base);
 
       // Make sure this surface inherits from PeriodicSurface.
       if (!surf) {
-        std::stringstream err_msg;
-        err_msg << "Periodic boundary condition not supported for surface "
-                << surf_base->id_
-                << ". Periodic BCs are only supported for planar surfaces.";
-        fatal_error(err_msg);
+        fatal_error(fmt::format(
+          "Periodic boundary condition not supported for surface {}. Periodic "
+          "BCs are only supported for planar surfaces.", surf_base->id_));
       }
 
       // See if this surface makes part of the global bounding box.
@@ -1221,7 +1226,7 @@ void read_surfaces(pugi::xml_node node)
 
   // Set i_periodic for periodic BC surfaces.
   for (int i_surf = 0; i_surf < model::surfaces.size(); i_surf++) {
-    if (model::surfaces[i_surf]->bc_ == BC_PERIODIC) {
+    if (model::surfaces[i_surf]->bc_ == Surface::BoundaryType::PERIODIC) {
       // Downcast to the PeriodicSurface type.
       Surface* surf_base = model::surfaces[i_surf].get();
       auto surf = dynamic_cast<PeriodicSurface*>(surf_base);
@@ -1259,10 +1264,8 @@ void read_surfaces(pugi::xml_node node)
         // This is a SurfacePlane.  We won't try to find it's partner if the
         // user didn't specify one.
         if (surf->i_periodic_ == C_NONE) {
-          std::stringstream err_msg;
-          err_msg << "No matching periodic surface specified for periodic "
-                     "boundary condition on surface " << surf->id_;
-          fatal_error(err_msg);
+          fatal_error(fmt::format("No matching periodic surface specified for "
+            "periodic boundary condition on surface {}", surf->id_));
         } else {
           // Convert the surface id to an index.
           surf->i_periodic_ = model::surface_map[surf->i_periodic_];
@@ -1270,11 +1273,9 @@ void read_surfaces(pugi::xml_node node)
       }
 
       // Make sure the opposite surface is also periodic.
-      if (model::surfaces[surf->i_periodic_]->bc_ != BC_PERIODIC) {
-        std::stringstream err_msg;
-        err_msg << "Could not find matching surface for periodic boundary "
-                   "condition on surface " << surf->id_;
-        fatal_error(err_msg);
+      if (model::surfaces[surf->i_periodic_]->bc_ != Surface::BoundaryType::PERIODIC) {
+        fatal_error(fmt::format("Could not find matching surface for periodic "
+          "boundary condition on surface {}", surf->id_));
       }
     }
   }
@@ -1283,12 +1284,12 @@ void read_surfaces(pugi::xml_node node)
   // surface
   bool boundary_exists = false;
   for (const auto& surf : model::surfaces) {
-    if (surf->bc_ != BC_TRANSMIT) {
+    if (surf->bc_ != Surface::BoundaryType::TRANSMIT) {
       boundary_exists = true;
       break;
     }
   }
-  if (settings::run_mode != RUN_MODE_PLOTTING && !boundary_exists) {
+  if (settings::run_mode != RunMode::PLOTTING && !boundary_exists) {
     fatal_error("No boundary conditions were applied to any surfaces!");
   }
 }

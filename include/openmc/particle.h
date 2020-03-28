@@ -13,6 +13,13 @@
 
 #include "openmc/constants.h"
 #include "openmc/position.h"
+#include "openmc/random_lcg.h"
+#include "openmc/tallies/filter_match.h"
+
+#ifdef DAGMC
+#include "DagMC.hpp"
+#endif
+
 
 namespace openmc {
 
@@ -26,12 +33,6 @@ namespace openmc {
 // is read in, we want to have an upper bound on the size of the array we
 // use to store the bins for delayed group tallies.
 constexpr int MAX_DELAYED_GROUPS {8};
-
-// Maximum number of lost particles
-constexpr int MAX_LOST_PARTICLES {10};
-
-// Maximum number of lost particles, relative to the total number of particles
-constexpr double REL_MAX_LOST_PARTICLES {1.0e-6};
 
 constexpr double CACHE_INVALID {-1.0};
 
@@ -130,6 +131,17 @@ struct MacroXS {
   double pair_production; //!< macroscopic pair production xs
 };
 
+//==============================================================================
+// Information about nearest boundary crossing
+//==============================================================================
+
+struct BoundaryInfo {
+  double distance {INFINITY};   //!< distance to nearest boundary
+  int surface_index {0}; //!< if boundary is surface, index in surfaces vector
+  int coord_level;   //!< coordinate level after crossing boundary
+  std::array<int, 3> lattice_translation {}; //!< which way lattice indices will change
+};
+
 //============================================================================
 //! State of a particle being transported through geometry
 //============================================================================
@@ -145,6 +157,12 @@ public:
   };
 
   //! Saved ("banked") state of a particle
+  //! NOTE: This structure's MPI type is built in initialize_mpi() of 
+  //! initialize.cpp. Any changes made to the struct here must also be
+  //! made when building the Bank MPI type in initialize_mpi().
+  //! NOTE: This structure is also used on the python side, and is defined
+  //! in lib/core.py. Changes made to the type here must also be made to the
+  //! python defintion.
   struct Bank {
     Position r;
     Direction u;
@@ -153,6 +171,15 @@ public:
     double wgt;
     int delayed_group;
     Type particle;
+    int64_t parent_id;
+    int64_t progeny_id;
+  };
+  
+  //! Saved ("banked") state of a particle, for nu-fission tallying
+  struct NuBank {
+    double E;  //!< particle energy
+    double wgt; //!< particle weight
+    int delayed_group; //!< particle delayed group
   };
 
   //==========================================================================
@@ -199,8 +226,13 @@ public:
   //! \param src Source site data
   void from_source(const Bank* src);
 
-  //! Transport a particle from birth to death
-  void transport();
+  // Coarse-grained particle events
+  void event_calculate_xs();
+  void event_advance();
+  void event_cross_surface();
+  void event_collide();
+  void event_revive_from_secondary();
+  void event_death();
 
   //! Cross a surface and handle boundary conditions
   void cross_surface();
@@ -217,6 +249,10 @@ public:
 
   //! create a particle restart HDF5 file
   void write_restart() const;
+
+  //! Gets the pointer to the particle's current PRN seed
+  uint64_t* current_seed() {return seeds_ + stream_;}
+  const uint64_t* current_seed() const {return seeds_ + stream_;}
 
   //==========================================================================
   // Data members
@@ -261,7 +297,7 @@ public:
 
   // What event took place
   bool fission_ {false}; //!< did particle cause implicit fission
-  int event_;          //!< scatter, absorption
+  TallyEvent event_;          //!< scatter, absorption
   int event_nuclide_;  //!< index in nuclides array
   int event_mt_;       //!< reaction MT
   int delayed_group_ {0};  //!< delayed group
@@ -274,10 +310,13 @@ public:
                                             //!< sites banked
 
   // Indices for various arrays
-  int surface_ {0};             //!< index for surface particle is on
+  int surface_ {0};         //!< index for surface particle is on
   int cell_born_ {-1};      //!< index for cell particle was born in
   int material_ {-1};       //!< index for current material
   int material_last_ {-1};  //!< index for last material
+  
+  // Boundary information
+  BoundaryInfo boundary_;
 
   // Temperature of current cell
   double sqrtkT_ {-1.0};      //!< sqrt(k_Boltzmann * temperature) in eV
@@ -288,6 +327,43 @@ public:
 
   // Track output
   bool write_track_ {false};
+
+  // Current PRNG state
+  uint64_t seeds_[N_STREAMS]; // current seeds
+  int      stream_;           // current RNG stream
+  
+  // Secondary particle bank
+  std::vector<Particle::Bank> secondary_bank_;
+
+  int64_t current_work_; // current work index
+
+  std::vector<double> flux_derivs_;  // for derivatives for this particle
+
+  std::vector<FilterMatch> filter_matches_; // tally filter matches
+
+  std::vector<std::vector<Position>> tracks_; // tracks for outputting to file
+
+  std::vector<NuBank> nu_bank_; // bank of most recently fissioned particles
+
+  // Global tally accumulators
+  double keff_tally_absorption_ {0.0};
+  double keff_tally_collision_ {0.0};
+  double keff_tally_tracklength_ {0.0};
+  double keff_tally_leakage_ {0.0};
+
+  bool trace_ {false};     //!< flag to show debug information
+
+  double collision_distance_; // distance to particle's next closest collision
+
+  int n_event_ {0}; // number of events executed in this particle's history
+
+  // DagMC state variables
+  #ifdef DAGMC
+  moab::DagMC::RayHistory history_;
+  Direction last_dir_;
+  #endif
+
+  int64_t n_progeny_ {0}; // Number of progeny produced by this particle
 };
 
 } // namespace openmc

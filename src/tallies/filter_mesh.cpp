@@ -1,6 +1,6 @@
 #include "openmc/tallies/filter_mesh.h"
 
-#include <sstream>
+#include <fmt/core.h>
 
 #include "openmc/capi.h"
 #include "openmc/constants.h"
@@ -24,17 +24,16 @@ MeshFilter::from_xml(pugi::xml_node node)
   if (search != model::mesh_map.end()) {
     set_mesh(search->second);
   } else{
-    std::stringstream err_msg;
-    err_msg << "Could not find mesh " << id << " specified on tally filter.";
-    fatal_error(err_msg);
+    fatal_error(fmt::format(
+      "Could not find mesh {} specified on tally filter.", id));
   }
 }
 
 void
-MeshFilter::get_all_bins(const Particle* p, int estimator, FilterMatch& match)
+MeshFilter::get_all_bins(const Particle* p, TallyEstimator estimator, FilterMatch& match)
 const
 {
-  if (estimator != ESTIMATOR_TRACKLENGTH) {
+  if (estimator != TallyEstimator::TRACKLENGTH) {
     auto bin = model::meshes[mesh_]->get_bin(p->r());
     if (bin >= 0) {
       match.bins_.push_back(bin);
@@ -61,13 +60,13 @@ MeshFilter::text_label(int bin) const
   std::vector<int> ijk(n_dim);
   mesh.get_indices_from_bin(bin, ijk.data());
 
-  std::stringstream out;
-  out << "Mesh Index (" << ijk[0];
-  if (n_dim > 1) out << ", " << ijk[1];
-  if (n_dim > 2) out << ", " << ijk[2];
-  out << ")";
-
-  return out.str();
+  if (n_dim > 2) {
+    return fmt::format("Mesh Index ({}, {}, {})", ijk[0], ijk[1], ijk[2]);
+  } else if (n_dim > 1) {
+    return fmt::format("Mesh Index ({}, {})", ijk[0], ijk[1]);
+  } else {
+    return fmt::format("Mesh Index ({})", ijk[0]) ;
+  }
 }
 
 void

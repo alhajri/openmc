@@ -3,13 +3,13 @@
 #include <cstddef>
 #include <cstdlib> // for getenv
 #include <cstring>
-#include <sstream>
 #include <string>
 #include <vector>
 
 #ifdef _OPENMP
 #include <omp.h>
 #endif
+#include <fmt/core.h>
 
 #include "openmc/capi.h"
 #include "openmc/constants.h"
@@ -74,7 +74,7 @@ int openmc_init(int argc, char* argv[], const void* intracomm)
   read_input_xml();
 
   // Check for particle restart run
-  if (settings::particle_restart_run) settings::run_mode = RUN_MODE_PARTICLE;
+  if (settings::particle_restart_run) settings::run_mode = RunMode::PARTICLE;
 
   // Stop initialization timer
   simulation::time_initialize.stop();
@@ -101,18 +101,20 @@ void initialize_mpi(MPI_Comm intracomm)
 
   // Create bank datatype
   Particle::Bank b;
-  MPI_Aint disp[6];
+  MPI_Aint disp[8];
   MPI_Get_address(&b.r, &disp[0]);
   MPI_Get_address(&b.u, &disp[1]);
   MPI_Get_address(&b.E, &disp[2]);
   MPI_Get_address(&b.wgt, &disp[3]);
   MPI_Get_address(&b.delayed_group, &disp[4]);
   MPI_Get_address(&b.particle, &disp[5]);
-  for (int i = 5; i >= 0; --i) disp[i] -= disp[0];
+  MPI_Get_address(&b.parent_id, &disp[6]);
+  MPI_Get_address(&b.progeny_id, &disp[7]);
+  for (int i = 7; i >= 0; --i) disp[i] -= disp[0];
 
-  int blocks[] {3, 3, 1, 1, 1, 1};
-  MPI_Datatype types[] {MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_INT, MPI_INT};
-  MPI_Type_create_struct(6, blocks, disp, types, &mpi::bank);
+  int blocks[] {3, 3, 1, 1, 1, 1, 1, 1};
+  MPI_Datatype types[] {MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_DOUBLE, MPI_INT, MPI_INT, MPI_LONG, MPI_LONG};
+  MPI_Type_create_struct(8, blocks, disp, types, &mpi::bank);
   MPI_Type_commit(&mpi::bank);
 }
 #endif // OPENMC_MPI
@@ -126,12 +128,15 @@ parse_command_line(int argc, char* argv[])
     std::string arg {argv[i]};
     if (arg[0] == '-') {
       if (arg == "-p" || arg == "--plot") {
-        settings::run_mode = RUN_MODE_PLOTTING;
+        settings::run_mode = RunMode::PLOTTING;
         settings::check_overlaps = true;
 
       } else if (arg == "-n" || arg == "--particles") {
         i += 1;
         settings::n_particles = std::stoll(argv[i]);
+
+      } else if (arg == "-e" || arg == "--event") {
+        settings::event_based = true;
 
       } else if (arg == "-r" || arg == "--restart") {
         i += 1;
@@ -150,9 +155,8 @@ parse_command_line(int argc, char* argv[])
           settings::path_particle_restart = argv[i];
           settings::particle_restart_run = true;
         } else {
-          std::stringstream msg;
-          msg << "Unrecognized file after restart flag: " << filetype << ".";
-          strcpy(openmc_err_msg, msg.str().c_str());
+          auto msg = fmt::format("Unrecognized file after restart flag: {}.", filetype);
+          strcpy(openmc_err_msg, msg.c_str());
           return OPENMC_E_INVALID_ARGUMENT;
         }
 
@@ -188,7 +192,7 @@ parse_command_line(int argc, char* argv[])
       } else if (arg == "-g" || arg == "--geometry-debug") {
       settings::check_overlaps = true;
       } else if (arg == "-c" || arg == "--volume") {
-        settings::run_mode = RUN_MODE_VOLUME;
+        settings::run_mode = RunMode::VOLUME;
       } else if (arg == "-s" || arg == "--threads") {
         // Read number of threads
         i += 1;
@@ -219,7 +223,7 @@ parse_command_line(int argc, char* argv[])
         settings::write_all_tracks = true;
 
       } else {
-        std::cerr << "Unknown option: " << argv[i] << '\n';
+        fmt::print(stderr, "Unknown option: {}\n", argv[i]);
         print_usage();
         return OPENMC_E_UNASSIGNED;
       }
@@ -253,15 +257,16 @@ void read_input_xml()
   double_2dvec thermal_temps(data::thermal_scatt_map.size());
   finalize_geometry(nuc_temps, thermal_temps);
 
-  if (settings::run_mode != RUN_MODE_PLOTTING) {
+  if (settings::run_mode != RunMode::PLOTTING) {
     simulation::time_read_xs.start();
     if (settings::run_CE) {
       // Read continuous-energy cross sections
       read_ce_cross_sections(nuc_temps, thermal_temps);
     } else {
       // Create material macroscopic data for MGXS
-      read_mgxs();
-      create_macro_xs();
+      set_mg_interface_nuclides_and_temps();
+      data::mg.init();
+      mark_fissionable_mgxs_materials();
     }
     simulation::time_read_xs.stop();
   }
@@ -271,7 +276,7 @@ void read_input_xml()
   // Initialize distribcell_filters
   prepare_distribcell();
 
-  if (settings::run_mode == RUN_MODE_PLOTTING) {
+  if (settings::run_mode == RunMode::PLOTTING) {
     // Read plots.xml if it exists
     read_plots_xml();
     if (mpi::master && settings::verbosity >= 5) print_plot();

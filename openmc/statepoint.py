@@ -14,14 +14,14 @@ import openmc.checkvalue as cv
 _VERSION_STATEPOINT = 17
 
 
-class StatePoint(object):
+class StatePoint:
     """State information on a simulation at a certain point in time (at the end
     of a given batch). Statepoints can be used to analyze tally results as well
     as restart a simulation.
 
     Parameters
     ----------
-    filename : str
+    filepath : str or Path
         Path to file to load
     autolink : bool, optional
         Whether to automatically link in metadata from a summary.h5 file and
@@ -115,7 +115,8 @@ class StatePoint(object):
 
     """
 
-    def __init__(self, filename, autolink=True):
+    def __init__(self, filepath, autolink=True):
+        filename = str(filepath)  # in case it's a Path
         self._f = h5py.File(filename, 'r')
         self._meshes = {}
         self._filters = {}
@@ -375,13 +376,18 @@ class StatePoint(object):
                 for tally_id in tally_ids:
                     group = tallies_group['tally {}'.format(tally_id)]
 
-                    # Read the number of realizations
-                    n_realizations = group['n_realizations'][()]
+                    # Check if tally is internal and therefore has no data
+                    if group.attrs.get("internal"):
+                        continue
 
                     # Create Tally object and assign basic properties
                     tally = openmc.Tally(tally_id)
                     tally._sp_filename = self._f.filename
                     tally.name = group['name'][()].decode() if 'name' in group else ''
+
+                    # Read the number of realizations
+                    n_realizations = group['n_realizations'][()]
+
                     tally.estimator = group['estimator'][()].decode()
                     tally.num_realizations = n_realizations
 

@@ -11,7 +11,7 @@ import openmc._xml as xml
 from openmc.checkvalue import check_type
 
 
-class Geometry(object):
+class Geometry:
     """Geometry representing a collection of surfaces, cells, and universes.
 
     Parameters
@@ -77,18 +77,25 @@ class Geometry(object):
                 if universe.id in volume_calc.volumes:
                     universe.add_volume_information(volume_calc)
 
-    def export_to_xml(self, path='geometry.xml'):
+    def export_to_xml(self, path='geometry.xml', remove_surfs=False):
         """Export geometry to an XML file.
 
         Parameters
         ----------
         path : str
             Path to file to write. Defaults to 'geometry.xml'.
+        remove_surfs : bool
+            Whether or not to remove redundant surfaces from the geometry when
+            exporting
 
         """
+        # Find and remove redundant surfaces from the geometry
+        if remove_surfs:
+            self.remove_redundant_surfaces()
+
         # Create XML representation
         root_element = ET.Element("geometry")
-        self.root_universe.create_xml_subelement(root_element)
+        self.root_universe.create_xml_subelement(root_element, memo=set())
 
         # Sort the elements in the file
         root_element[:] = sorted(root_element, key=lambda x: (
@@ -272,9 +279,9 @@ class Geometry(object):
 
         """
         if self.root_universe is not None:
-            return self.root_universe.get_all_cells()
+            return self.root_universe.get_all_cells(memo=set())
         else:
-            return []
+            return OrderedDict()
 
     def get_all_universes(self):
         """Return all universes in the geometry.
@@ -301,7 +308,10 @@ class Geometry(object):
             instances
 
         """
-        return self.root_universe.get_all_materials()
+        if self.root_universe is not None:
+            return self.root_universe.get_all_materials(memo=set())
+        else:
+            return OrderedDict()
 
     def get_all_material_cells(self):
         """Return all cells filled by a material
@@ -376,8 +386,46 @@ class Geometry(object):
         surfaces = OrderedDict()
 
         for cell in self.get_all_cells().values():
-            surfaces = cell.region.get_surfaces(surfaces)
+            if cell.region is not None:
+                surfaces = cell.region.get_surfaces(surfaces)
         return surfaces
+
+    def get_redundant_surfaces(self):
+        """Return all of the topologically redundant surface ids
+
+        Returns
+        -------
+        dict
+            Dictionary whose keys are the ID of a redundant surface and whose
+            values are the topologically equivalent :class:`openmc.Surface`
+            that should replace it.
+
+        """
+        tally = defaultdict(list)
+        for surf in self.get_all_surfaces().values():
+            coeffs = tuple(surf._coefficients[k] for k in surf._coeff_keys)
+            key = (surf._type,) + coeffs
+            tally[key].append(surf)
+        return {replace.id: keep
+                for keep, *redundant in tally.values()
+                for replace in redundant}
+
+    def _get_domains_by_name(self, name, case_sensitive, matching, domain_type):
+        if not case_sensitive:
+            name = name.lower()
+
+        domains = []
+
+        func = getattr(self, 'get_all_{}s'.format(domain_type))
+        for domain in func().values():
+            domain_name = domain.name if case_sensitive else domain.name.lower()
+            if domain_name == name:
+                domains.append(domain)
+            elif not matching and name in domain_name:
+                domains.append(domain)
+
+        domains.sort(key=lambda x: x.id)
+        return domains
 
     def get_materials_by_name(self, name, case_sensitive=False, matching=False):
         """Return a list of materials with matching names.
@@ -398,24 +446,7 @@ class Geometry(object):
             Materials matching the queried name
 
         """
-
-        if not case_sensitive:
-            name = name.lower()
-
-        all_materials = self.get_all_materials().values()
-        materials = set()
-
-        for material in all_materials:
-            material_name = material.name
-            if not case_sensitive:
-                material_name = material_name.lower()
-
-            if material_name == name:
-                materials.add(material)
-            elif not matching and name in material_name:
-                materials.add(material)
-
-        return sorted(materials, key=lambda x: x.id)
+        return self._get_domains_by_name(name, case_sensitive, matching, 'material')
 
     def get_cells_by_name(self, name, case_sensitive=False, matching=False):
         """Return a list of cells with matching names.
@@ -436,24 +467,7 @@ class Geometry(object):
             Cells matching the queried name
 
         """
-
-        if not case_sensitive:
-            name = name.lower()
-
-        all_cells = self.get_all_cells().values()
-        cells = set()
-
-        for cell in all_cells:
-            cell_name = cell.name
-            if not case_sensitive:
-                cell_name = cell_name.lower()
-
-            if cell_name == name:
-                cells.add(cell)
-            elif not matching and name in cell_name:
-                cells.add(cell)
-
-        return sorted(cells, key=lambda x: x.id)
+        return self._get_domains_by_name(name, case_sensitive, matching, 'cell')
 
     def get_cells_by_fill_name(self, name, case_sensitive=False, matching=False):
         """Return a list of cells with fills with matching names.
@@ -519,24 +533,7 @@ class Geometry(object):
             Universes matching the queried name
 
         """
-
-        if not case_sensitive:
-            name = name.lower()
-
-        all_universes = self.get_all_universes().values()
-        universes = set()
-
-        for universe in all_universes:
-            universe_name = universe.name
-            if not case_sensitive:
-                universe_name = universe_name.lower()
-
-            if universe_name == name:
-                universes.add(universe)
-            elif not matching and name in universe_name:
-                universes.add(universe)
-
-        return sorted(universes, key=lambda x: x.id)
+        return self._get_domains_by_name(name, case_sensitive, matching, 'universe')
 
     def get_lattices_by_name(self, name, case_sensitive=False, matching=False):
         """Return a list of lattices with matching names.
@@ -557,24 +554,18 @@ class Geometry(object):
             Lattices matching the queried name
 
         """
+        return self._get_domains_by_name(name, case_sensitive, matching, 'lattice')
 
-        if not case_sensitive:
-            name = name.lower()
+    def remove_redundant_surfaces(self):
+        """Remove redundant surfaces from the geometry"""
 
-        all_lattices = self.get_all_lattices().values()
-        lattices = set()
+        # Get redundant surfaces
+        redundant_surfaces = self.get_redundant_surfaces()
 
-        for lattice in all_lattices:
-            lattice_name = lattice.name
-            if not case_sensitive:
-                lattice_name = lattice_name.lower()
-
-            if lattice_name == name:
-                lattices.add(lattice)
-            elif not matching and name in lattice_name:
-                lattices.add(lattice)
-
-        return sorted(lattices, key=lambda x: x.id)
+        # Iterate through all cells contained in the geometry
+        for cell in self.get_all_cells().values():
+            # Recursively remove redundant surfaces from regions
+            cell.region.remove_redundant_surfaces(redundant_surfaces)
 
     def determine_paths(self, instances_only=False):
         """Determine paths through CSG tree for cells and materials.

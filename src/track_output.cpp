@@ -6,16 +6,12 @@
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
 
+#include <fmt/core.h>
 #include "xtensor/xtensor.hpp"
 
 #include <cstddef> // for size_t
-#include <sstream>
 #include <string>
 #include <vector>
-
-// Explicit vector template specialization of threadprivate variable outside of
-// the openmc namespace for the picky Intel compiler.
-template class std::vector<std::vector<openmc::Position>>;
 
 namespace openmc {
 
@@ -23,47 +19,41 @@ namespace openmc {
 // Global variables
 //==============================================================================
 
-// Forward declaration needed in order to declare tracks as threadprivate
-extern std::vector<std::vector<Position>> tracks;
-#pragma omp threadprivate(tracks)
-
-std::vector<std::vector<Position>> tracks;
-
 //==============================================================================
 // Non-member functions
 //==============================================================================
 
-void add_particle_track()
+void add_particle_track(Particle& p)
 {
-  tracks.emplace_back();
+  p.tracks_.emplace_back();
 }
 
-void write_particle_track(const Particle& p)
+void write_particle_track(Particle& p)
 {
-  tracks.back().push_back(p.r());
+  p.tracks_.back().push_back(p.r());
 }
 
-void finalize_particle_track(const Particle& p)
+void finalize_particle_track(Particle& p)
 {
-  std::stringstream filename;
-  filename << settings::path_output << "track_" << simulation::current_batch
-    << '_' << simulation::current_gen << '_' << p.id_ << ".h5";
+  std::string filename = fmt::format("{}track_{}_{}_{}.h5",
+    settings::path_output, simulation::current_batch, simulation::current_gen,
+    p.id_);
 
   // Determine number of coordinates for each particle
   std::vector<int> n_coords;
-  for (auto& coords : tracks) {
+  for (auto& coords : p.tracks_) {
     n_coords.push_back(coords.size());
   }
 
   #pragma omp critical (FinalizeParticleTrack)
   {
-    hid_t file_id = file_open(filename.str().c_str(), 'w');
+    hid_t file_id = file_open(filename, 'w');
     write_attribute(file_id, "filetype", "track");
     write_attribute(file_id, "version", VERSION_TRACK);
-    write_attribute(file_id, "n_particles", tracks.size());
+    write_attribute(file_id, "n_particles", p.tracks_.size());
     write_attribute(file_id, "n_coords", n_coords);
-    for (int i = 1; i <= tracks.size(); ++i) {
-      const auto& t {tracks[i-1]};
+    for (auto i = 1; i <= p.tracks_.size(); ++i) {
+      const auto& t {p.tracks_[i-1]};
       size_t n = t.size();
       xt::xtensor<double, 2> data({n,3});
       for (int j = 0; j < n; ++j) {
@@ -71,14 +61,14 @@ void finalize_particle_track(const Particle& p)
         data(j, 1) = t[j].y;
         data(j, 2) = t[j].z;
       }
-      std::string name = "coordinates_" + std::to_string(i);
+      std::string name = fmt::format("coordinates_{}", i);
       write_dataset(file_id, name.c_str(), data);
     }
     file_close(file_id);
   }
 
   // Clear particle tracks
-  tracks.clear();
+  p.tracks_.clear();
 }
 
 } // namespace openmc

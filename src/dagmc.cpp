@@ -12,11 +12,10 @@
 #include "openmc/surface.h"
 
 #ifdef DAGMC
-
 #include "uwuw.hpp"
 #include "dagmcmetadata.hpp"
-
 #endif
+#include <fmt/core.h>
 
 #include <string>
 #include <sstream>
@@ -38,13 +37,6 @@ const bool dagmc_enabled = false;
 namespace openmc {
 
 const std::string DAGMC_FILENAME = "dagmc.h5m";
-
-namespace simulation {
-
-moab::DagMC::RayHistory history;
-Direction last_dir;
-
-}
 
 namespace model {
 
@@ -117,11 +109,10 @@ void legacy_assign_material(const std::string& mat_string, DAGCell* c)
         c->material_.push_back(m->id_);
       // report error if more than one material is found
       } else {
-        std::stringstream err_msg;
-        err_msg << "More than one material found with name " << mat_string
-                << ". Please ensure materials have unique names if using this"
-                << " property to assign materials.";
-        fatal_error(err_msg);
+        fatal_error(fmt::format(
+          "More than one material found with name {}. Please ensure materials "
+          "have unique names if using this property to assign materials.",
+          mat_string));
       }
     }
   }
@@ -132,10 +123,8 @@ void legacy_assign_material(const std::string& mat_string, DAGCell* c)
       auto id = std::stoi(mat_string);
       c->material_.emplace_back(id);
     } catch (const std::invalid_argument&) {
-      std::stringstream err_msg;
-      err_msg << "No material " << mat_string
-              << " found for volume (cell) " << c->id_;
-      fatal_error(err_msg);
+      fatal_error(fmt::format(
+        "No material {} found for volume (cell) {}", mat_string, c->id_));
     }
   }
 
@@ -160,7 +149,6 @@ void load_dagmc_geometry()
     model::DAG = new moab::DagMC();
   }
 
-
   std::string filename = settings::path_input + DAGMC_FILENAME;
   // --- Materials ---
 
@@ -172,7 +160,7 @@ void load_dagmc_geometry()
 
   // notify user if UWUW materials are going to be used
   if (using_uwuw) {
-    std::cout << "Found UWUW Materials in the DAGMC geometry file.\n";
+    write_message("Found UWUW Materials in the DAGMC geometry file.", 6);
   }
 
   int32_t dagmc_univ_id = 0; // universe is always 0 for DAGMC runs
@@ -260,22 +248,18 @@ void load_dagmc_geometry()
       rval = model::DAG->prop_value(vol_handle, "mat", mat_value);
       MB_CHK_ERR_CONT(rval);
     } else {
-      std::stringstream err_msg;
-      err_msg << "Volume " << c->id_ << " has no material assignment.";
-      fatal_error(err_msg.str());
+      fatal_error(fmt::format("Volume {} has no material assignment.", c->id_));
     }
 
     std::string cmp_str = mat_value;
     to_lower(cmp_str);
 
-    if (cmp_str.find("graveyard") != std::string::npos) {
+    if (cmp_str == "graveyard") {
       graveyard = vol_handle;
     }
 
     // material void checks
-    if (cmp_str.find("void") != std::string::npos   ||
-        cmp_str.find("vacuum") != std::string::npos ||
-        cmp_str.find("graveyard") != std::string::npos) {
+    if (cmp_str == "void" || cmp_str == "vacuum" || cmp_str == "graveyard") {
       c->material_.push_back(MATERIAL_VOID);
     } else {
       if (using_uwuw) {
@@ -286,10 +270,8 @@ void load_dagmc_geometry()
           int mat_number = uwuw.material_library[uwuw_mat].metadata["mat_number"].asInt();
           c->material_.push_back(mat_number);
         } else {
-          std::stringstream err_msg;
-          err_msg << "Material with value " << mat_value << " not found ";
-          err_msg << "in the UWUW material library";
-          fatal_error(err_msg);
+          fatal_error(fmt::format("Material with value {} not found in the "
+            "UWUW material library", mat_value));
         }
       } else {
         legacy_assign_material(mat_value, c);
@@ -349,22 +331,20 @@ void load_dagmc_geometry()
       to_lower(bc_value);
 
       if (bc_value == "transmit" || bc_value == "transmission") {
-        s->bc_ = BC_TRANSMIT;
+        s->bc_ = Surface::BoundaryType::TRANSMIT;
       } else if (bc_value == "vacuum") {
-        s->bc_ = BC_VACUUM;
+        s->bc_ = Surface::BoundaryType::VACUUM;
       } else if (bc_value == "reflective" || bc_value == "reflect" || bc_value == "reflecting") {
-        s->bc_ = BC_REFLECT;
+        s->bc_ = Surface::BoundaryType::REFLECT;
       } else if (bc_value == "periodic") {
         fatal_error("Periodic boundary condition not supported in DAGMC.");
       } else {
-        std::stringstream err_msg;
-        err_msg << "Unknown boundary condition \"" << s->bc_
-                << "\" specified on surface " << s->id_;
-        fatal_error(err_msg);
+        fatal_error(fmt::format("Unknown boundary condition \"{}\" specified "
+          "on surface {}", bc_value, s->id_));
       }
     } else {
       // if no condition is found, set to transmit
-      s->bc_ = BC_TRANSMIT;
+      s->bc_ = Surface::BoundaryType::TRANSMIT;
     }
 
     // graveyard check
@@ -375,7 +355,7 @@ void load_dagmc_geometry()
     // if this surface belongs to the graveyard
     if (graveyard && parent_vols.find(graveyard) != parent_vols.end()) {
       // set BC to vacuum
-      s->bc_ = BC_VACUUM;
+      s->bc_ = Surface::BoundaryType::VACUUM;
     }
 
     // add to global array and map

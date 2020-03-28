@@ -1,6 +1,6 @@
 #include "openmc/tallies/filter_cell.h"
 
-#include <sstream>
+#include <fmt/core.h>
 
 #include "openmc/capi.h"
 #include "openmc/cell.h"
@@ -12,15 +12,13 @@ namespace openmc {
 void
 CellFilter::from_xml(pugi::xml_node node)
 {
-  // Get cell IDs and convert into indices into the global cells vector
+  // Get cell IDs and convert to indices into the global cells vector
   auto cells = get_node_array<int32_t>(node, "bins");
   for (auto& c : cells) {
     auto search = model::cell_map.find(c);
     if (search == model::cell_map.end()) {
-      std::stringstream err_msg;
-      err_msg << "Could not find cell " << c
-              << " specified on tally filter.";
-      throw std::runtime_error{err_msg.str()};
+      throw std::runtime_error{fmt::format(
+        "Could not find cell {} specified on tally filter.", c)};
     }
     c = search->second;
   }
@@ -48,7 +46,7 @@ CellFilter::set_cells(gsl::span<int32_t> cells)
 }
 
 void
-CellFilter::get_all_bins(const Particle* p, int estimator,
+CellFilter::get_all_bins(const Particle* p, TallyEstimator estimator,
                          FilterMatch& match) const
 {
   for (int i = 0; i < p->n_coord_; i++) {
@@ -72,7 +70,7 @@ CellFilter::to_statepoint(hid_t filter_group) const
 std::string
 CellFilter::text_label(int bin) const
 {
-  return "Cell " + std::to_string(model::cells[cells_[bin]]->id_);
+  return fmt::format("Cell {}", model::cells[cells_[bin]]->id_);
 }
 
 //==============================================================================

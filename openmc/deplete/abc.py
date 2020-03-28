@@ -5,6 +5,7 @@ to run a full depletion simulation.
 """
 
 from collections import namedtuple
+from collections import defaultdict
 from collections.abc import Iterable
 import os
 from pathlib import Path
@@ -13,14 +14,26 @@ from copy import deepcopy
 from warnings import warn
 from numbers import Real, Integral
 
-from numpy import nonzero, empty
+from numpy import nonzero, empty, asarray
 from uncertainties import ufloat
 
 from openmc.data import DataLibrary, JOULE_PER_EV
+from openmc.lib import MaterialFilter, Tally
 from openmc.checkvalue import check_type, check_greater_than
 from .results import Results
 from .chain import Chain
 from .results_list import ResultsList
+
+
+__all__ = [
+    "OperatorResult", "TransportOperator", "ReactionRateHelper",
+    "EnergyHelper", "FissionYieldHelper", "TalliedFissionYieldHelper",
+    "Integrator", "SIIntegrator", "DepSystemSolver"]
+
+
+_SECONDS_PER_MINUTE = 60
+_SECONDS_PER_HOUR = 60*60
+_SECONDS_PER_DAY = 24*60*60
 
 OperatorResult = namedtuple('OperatorResult', ['k', 'rates'])
 OperatorResult.__doc__ = """\
@@ -177,7 +190,7 @@ class TransportOperator(ABC):
 
         Returns
         -------
-        volume : list of float
+        volume : dict of str to float
             Volumes corresponding to materials in burn_list
         nuc_list : list of str
             A list of all nuclide names. Used for sorting the simulation.
@@ -364,6 +377,223 @@ class EnergyHelper(ABC):
         self._nuclides = nuclides
 
 
+class FissionYieldHelper(ABC):
+    """Abstract class for processing energy dependent fission yields
+
+    Parameters
+    ----------
+    chain_nuclides : iterable of openmc.deplete.Nuclide
+        Nuclides tracked in the depletion chain. All nuclides are
+        not required to have fission yield data.
+
+    Attributes
+    ----------
+    constant_yields : collections.defaultdict
+        Fission yields for all nuclides that only have one set of
+        fission yield data. Dictionary of form ``{str: {str: float}}``
+        representing yields for ``{parent: {product: yield}}``. Default
+        return object is an empty dictionary
+
+    """
+
+    def __init__(self, chain_nuclides):
+        self._chain_nuclides = {}
+        self._constant_yields = defaultdict(dict)
+
+        # Get all nuclides with fission yield data
+        for nuc in chain_nuclides:
+            if nuc.yield_data is None:
+                continue
+            if len(nuc.yield_data) == 1:
+                self._constant_yields[nuc.name] = (
+                    nuc.yield_data[nuc.yield_energies[0]])
+            elif len(nuc.yield_data) > 1:
+                self._chain_nuclides[nuc.name] = nuc
+        self._chain_set = set(self._chain_nuclides) | set(self._constant_yields)
+
+    @property
+    def constant_yields(self):
+        return deepcopy(self._constant_yields)
+
+    @abstractmethod
+    def weighted_yields(self, local_mat_index):
+        """Return fission yields for a specific material
+
+        Parameters
+        ----------
+        local_mat_index : int
+            Index for the material with requested fission yields.
+            Should correspond to the material represented in
+            ``mat_indexes[local_mat_index]`` during
+            :meth:`generate_tallies`.
+
+        Returns
+        -------
+        library : collections.abc.Mapping
+            Dictionary-like object mapping ``{str: {str: float}``.
+            This reflects fission yields for ``{parent: {product: fyield}}``.
+        """
+
+    @staticmethod
+    def unpack():
+        """Unpack tally data prior to compute fission yields.
+
+        Called after a :meth:`openmc.deplete.Operator.__call__`
+        routine during the normalization of reaction rates.
+
+        Not necessary for all subclasses to implement, unless tallies
+        are used.
+        """
+
+    @staticmethod
+    def generate_tallies(materials, mat_indexes):
+        """Construct tallies necessary for computing fission yields
+
+        Called during the operator set up phase prior to depleting.
+        Not necessary for subclasses to implement
+
+        Parameters
+        ----------
+        materials : iterable of C-API materials
+            Materials to be used in :class:`openmc.lib.MaterialFilter`
+        mat_indexes : iterable of int
+            Indices of tallied materials that will have their fission
+            yields computed by this helper. Necessary as the
+            :class:`openmc.deplete.Operator` that uses this helper
+            may only burn a subset of all materials when running
+            in parallel mode.
+        """
+
+    def update_tally_nuclides(self, nuclides):
+        """Return nuclides with non-zero densities and yield data
+
+        Parameters
+        ----------
+        nuclides : iterable of str
+            Nuclides with non-zero densities from the
+            :class:`openmc.deplete.Operator`
+
+        Returns
+        -------
+        nuclides : list of str
+            Union of nuclides that the :class:`openmc.deplete.Operator`
+            says have non-zero densities at this stage and those that
+            have yield data. Sorted by nuclide name
+
+        """
+        return sorted(self._chain_set & set(nuclides))
+
+    @classmethod
+    def from_operator(cls, operator, **kwargs):
+        """Create a new instance by pulling data from the operator
+
+        All keyword arguments should be identical to their counterpart
+        in the main ``__init__`` method
+
+        Parameters
+        ----------
+        operator : openmc.deplete.TransportOperator
+            Operator with a depletion chain
+        kwargs: optional
+            Additional keyword arguments to be used in constuction
+        """
+        return cls(operator.chain.nuclides, **kwargs)
+
+
+class TalliedFissionYieldHelper(FissionYieldHelper):
+    """Abstract class for computing fission yields with tallies
+
+    Generates a basic fission rate tally in all burnable materials with
+    :meth:`generate_tallies`, and set nuclides to be tallied with
+    :meth:`update_tally_nuclides`. Subclasses will need to implement
+    :meth:`unpack` and :meth:`weighted_yields`.
+
+    Parameters
+    ----------
+    chain_nuclides : iterable of openmc.deplete.Nuclide
+        Nuclides tracked in the depletion chain. Not necessary
+        that all have yield data.
+
+    Attributes
+    ----------
+    constant_yields : dict of str to :class:`openmc.deplete.FissionYield`
+        Fission yields for all nuclides that only have one set of
+        fission yield data. Can be accessed as ``{parent: {product: yield}}``
+    results : None or numpy.ndarray
+        Tally results shaped in a manner useful to this helper.
+    """
+
+    _upper_energy = 20.0e6  # upper energy for tallies
+
+    def __init__(self, chain_nuclides):
+        super().__init__(chain_nuclides)
+        self._local_indexes = None
+        self._fission_rate_tally = None
+        self._tally_nucs = []
+        self.results = None
+
+    def generate_tallies(self, materials, mat_indexes):
+        """Construct the fission rate tally
+
+        Parameters
+        ----------
+        materials : iterable of :class:`openmc.lib.Material`
+            Materials to be used in :class:`openmc.lib.MaterialFilter`
+        mat_indexes : iterable of int
+            Indices of tallied materials that will have their fission
+            yields computed by this helper. Necessary as the
+            :class:`openmc.deplete.Operator` that uses this helper
+            may only burn a subset of all materials when running
+            in parallel mode.
+        """
+        self._local_indexes = asarray(mat_indexes)
+
+        # Tally group-wise fission reaction rates
+        self._fission_rate_tally = Tally()
+        self._fission_rate_tally.writable = False
+        self._fission_rate_tally.scores = ['fission']
+
+        self._fission_rate_tally.filters = [MaterialFilter(materials)]
+
+    def update_tally_nuclides(self, nuclides):
+        """Tally nuclides with non-zero density and multiple yields
+
+        Must be run after :meth:`generate_tallies`.
+
+        Parameters
+        ----------
+        nuclides : iterable of str
+            Potential nuclides to be tallied, such as those with
+            non-zero density at this stage.
+
+        Returns
+        -------
+        nuclides : list of str
+            Union of input nuclides and those that have multiple sets
+            of yield data.  Sorted by nuclide name
+
+        Raises
+        ------
+        AttributeError
+            If tallies not generated
+        """
+        assert self._fission_rate_tally is not None, (
+                "Run generate_tallies first")
+        overlap = set(self._chain_nuclides).intersection(set(nuclides))
+        nuclides = sorted(overlap)
+        self._tally_nucs = [self._chain_nuclides[n] for n in nuclides]
+        self._fission_rate_tally.nuclides = nuclides
+        return nuclides
+
+    @abstractmethod
+    def unpack(self):
+        """Unpack tallies after a transport run.
+
+        Abstract because each subclass will need to arrange its
+        tally data.
+        """
+
+
 class Integrator(ABC):
     """Abstract class for solving the time-integration for depletion
 
@@ -371,9 +601,11 @@ class Integrator(ABC):
     ----------
     operator : openmc.deplete.TransportOperator
         Operator to perform transport simulations
-    timesteps : iterable of float
-        Array of timesteps in units of [s]. Note that values are not
-        cumulative.
+    timesteps : iterable of float or iterable of tuple
+        Array of timesteps. Note that values are not cumulative. The units are
+        specified by the `timestep_units` argument when `timesteps` is an
+        iterable of float. Alternatively, units can be specified for each step
+        by passing an iterable of (value, unit) tuples.
     power : float or iterable of float, optional
         Power of the reactor in [W]. A single value indicates that
         the power is constant over all timesteps. An iterable
@@ -386,6 +618,11 @@ class Integrator(ABC):
         Power density of the reactor in [W/gHM]. It is multiplied by
         initial heavy metal inventory to get total power if ``power``
         is not speficied.
+    timestep_units : {'s', 'min', 'h', 'd', 'MWd/kg'}
+        Units for values specified in the `timesteps` argument. 's' means
+        seconds, 'min' means minutes, 'h' means hours, and 'MWd/kg' indicates
+        that the values are given in burnup (MW-d of energy deposited per
+        kilogram of initial heavy metal).
 
     Attributes
     ----------
@@ -399,7 +636,8 @@ class Integrator(ABC):
         Power of the reactor in [W] for each interval in :attr:`timesteps`
     """
 
-    def __init__(self, operator, timesteps, power=None, power_density=None):
+    def __init__(self, operator, timesteps, power=None, power_density=None,
+                 timestep_units='s'):
         # Check number of stages previously used
         if operator.prev_res is not None:
             res = operator.prev_res[-1]
@@ -412,27 +650,59 @@ class Integrator(ABC):
                         self._num_stages))
         self.operator = operator
         self.chain = operator.chain
-        if not isinstance(timesteps, Iterable):
-            self.timesteps = [timesteps]
-        else:
-            self.timesteps = timesteps
+
+        # Determine power and normalize units to W
         if power is None:
             if power_density is None:
                 raise ValueError("Either power or power density must be set")
             if not isinstance(power_density, Iterable):
                 power = power_density * operator.heavy_metal
             else:
-                power = [p * operator.heavy_metal for p in power_density]
-
+                power = [p*operator.heavy_metal for p in power_density]
         if not isinstance(power, Iterable):
             # Ensure that power is single value if that is the case
-            power = [power] * len(self.timesteps)
-        elif len(power) != len(self.timesteps):
-            raise ValueError(
-                "Number of time steps != number of powers. {} vs {}".format(
-                    len(self.timesteps), len(power)))
+            power = [power] * len(timesteps)
 
-        self.power = power
+        if len(power) != len(timesteps):
+            raise ValueError(
+                "Number of time steps ({}) != number of powers ({})".format(
+                    len(timesteps), len(power)))
+
+        # Get list of times / units
+        if isinstance(timesteps[0], Iterable):
+            times, units = zip(*timesteps)
+        else:
+            times = timesteps
+            units = [timestep_units] * len(timesteps)
+
+        # Determine number of seconds for each timestep
+        seconds = []
+        for time, unit, watts in zip(times, units, power):
+            # Make sure values passed make sense
+            check_type('timestep', time, Real)
+            check_greater_than('timestep', time, 0.0, False)
+            check_type('timestep units', unit, str)
+            check_type('power', watts, Real)
+            check_greater_than('power', watts, 0.0, True)
+
+            if unit in ('s', 'sec'):
+                seconds.append(time)
+            elif unit in ('min', 'minute'):
+                seconds.append(time*_SECONDS_PER_MINUTE)
+            elif unit in ('h', 'hr', 'hour'):
+                seconds.append(time*_SECONDS_PER_HOUR)
+            elif unit in ('d', 'day'):
+                seconds.append(time*_SECONDS_PER_DAY)
+            elif unit.lower() == 'mwd/kg':
+                watt_days_per_kg = 1e6*time
+                kilograms = 1e-3*operator.heavy_metal
+                days = watt_days_per_kg * kilograms / watts
+                seconds.append(days*_SECONDS_PER_DAY)
+            else:
+                raise ValueError("Invalid timestep unit '{}'".format(unit))
+
+        self.timesteps = asarray(seconds)
+        self.power = asarray(power)
 
     @abstractmethod
     def __call__(self, conc, rates, dt, power, i):
@@ -546,9 +816,11 @@ class SIIntegrator(Integrator):
     ----------
     operator : openmc.deplete.TransportOperator
         The operator object to simulate on.
-    timesteps : iterable of float
-        Array of timesteps in units of [s]. Note that values are not
-        cumulative.
+    timesteps : iterable of float or iterable of tuple
+        Array of timesteps. Note that values are not cumulative. The units are
+        specified by the `timestep_units` argument when `timesteps` is an
+        iterable of float. Alternatively, units can be specified for each step
+        by passing an iterable of (value, unit) tuples.
     power : float or iterable of float, optional
         Power of the reactor in [W]. A single value indicates that
         the power is constant over all timesteps. An iterable
@@ -561,6 +833,11 @@ class SIIntegrator(Integrator):
         Power density of the reactor in [W/gHM]. It is multiplied by
         initial heavy metal inventory to get total power if ``power``
         is not speficied.
+    timestep_units : {'s', 'min', 'h', 'd', 'MWd/kg'}
+        Units for values specified in the `timesteps` argument. 's' means
+        seconds, 'min' means minutes, 'h' means hours, and 'MWd/kg' indicates
+        that the values are given in burnup (MW-d of energy deposited per
+        kilogram of initial heavy metal).
     n_steps : int, optional
         Number of stochastic iterations per depletion interval.
         Must be greater than zero. Default : 10
@@ -579,21 +856,21 @@ class SIIntegrator(Integrator):
         Number of stochastic iterations per depletion interval
     """
     def __init__(self, operator, timesteps, power=None, power_density=None,
-                 n_steps=10):
+                 timestep_units='s', n_steps=10):
         check_type("n_steps", n_steps, Integral)
         check_greater_than("n_steps", n_steps, 0)
-        super().__init__(operator, timesteps, power, power_density)
+        super().__init__(operator, timesteps, power, power_density, timestep_units)
         self.n_steps = n_steps
 
     def _get_bos_data_from_operator(self, step_index, step_power, bos_conc):
         reset_particles = False
         if step_index == 0 and hasattr(self.operator, "settings"):
             reset_particles = True
-            self.operator.settings.particles *= self.n_stages
+            self.operator.settings.particles *= self.n_steps
         inherited = super()._get_bos_data_from_operator(
             step_index, step_power, bos_conc)
         if reset_particles:
-            self.operator.settings.particles //= self.n_stages
+            self.operator.settings.particles //= self.n_steps
         return inherited
 
     def integrate(self):
@@ -630,3 +907,40 @@ class SIIntegrator(Integrator):
             Results.save(self.operator, [conc], [res_list[-1]], [t, t],
                          p, self._i_res + len(self), proc_time)
             self.operator.write_bos_data(self._i_res + len(self))
+
+
+class DepSystemSolver(ABC):
+    r"""Abstract class for solving depletion equations
+
+    Responsible for solving
+
+    .. math::
+
+        \frac{\partial \vec{N}}{\partial t} = \bar{A}\vec{N}(t),
+
+    for :math:`0< t\leq t +\Delta t`, given :math:`\vec{N}(0) = \vec{N}_0`
+
+    """
+
+    @abstractmethod
+    def __call__(self, A, n0, dt):
+        """Solve the linear system of equations for depletion
+
+        Parameters
+        ----------
+        A : scipy.sparse.csr_matrix
+            Sparse transmutation matrix ``A[j, i]`` desribing rates at
+            which isotope ``i`` transmutes to isotope ``j``
+        n0 : numpy.ndarray
+            Initial compositions, typically given in number of atoms in some
+            material or an atom density
+        dt : float
+            Time [s] of the specific interval to be solved
+
+        Returns
+        -------
+        numpy.ndarray
+            Final compositions after ``dt``. Should be of identical shape
+            to ``n0``.
+
+        """

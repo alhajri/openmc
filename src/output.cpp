@@ -1,6 +1,6 @@
 #include "openmc/output.h"
 
-#include <algorithm>  // for std::transform
+#include <algorithm>  // for transform, max
 #include <cstring>  // for strlen
 #include <ctime> // for time, localtime
 #include <iomanip>  // for setw, setprecision, put_time
@@ -11,6 +11,8 @@
 #include <unordered_map>
 #include <utility> // for pair
 
+#include <fmt/core.h>
+#include <fmt/ostream.h>
 #ifdef _OPENMP
 #include <omp.h>
 #endif
@@ -44,55 +46,55 @@ namespace openmc {
 
 void title()
 {
-  std::cout <<
-    "                                %%%%%%%%%%%%%%%\n" <<
-    "                           %%%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                                    %%%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                                     %%%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                 ###############      %%%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                ##################     %%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                ###################     %%%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                ####################     %%%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                #####################     %%%%%%%%%%%%%%%%%%%%%\n" <<
-    "                ######################     %%%%%%%%%%%%%%%%%%%%\n" <<
-    "                #######################     %%%%%%%%%%%%%%%%%%\n" <<
-    "                 #######################     %%%%%%%%%%%%%%%%%\n" <<
-    "                 ######################     %%%%%%%%%%%%%%%%%\n" <<
-    "                  ####################     %%%%%%%%%%%%%%%%%\n" <<
-    "                    #################     %%%%%%%%%%%%%%%%%\n" <<
-    "                     ###############     %%%%%%%%%%%%%%%%\n" <<
-    "                       ############     %%%%%%%%%%%%%%%\n" <<
-    "                          ########     %%%%%%%%%%%%%%\n" <<
-    "                                      %%%%%%%%%%%\n\n";
+  fmt::print(
+    "                                %%%%%%%%%%%%%%%\n"
+    "                           %%%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                        %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                      %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                    %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                                    %%%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                                     %%%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                 ###############      %%%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                ##################     %%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                ###################     %%%%%%%%%%%%%%%%%%%%%%%\n"
+    "                ####################     %%%%%%%%%%%%%%%%%%%%%%\n"
+    "                #####################     %%%%%%%%%%%%%%%%%%%%%\n"
+    "                ######################     %%%%%%%%%%%%%%%%%%%%\n"
+    "                #######################     %%%%%%%%%%%%%%%%%%\n"
+    "                 #######################     %%%%%%%%%%%%%%%%%\n"
+    "                 ######################     %%%%%%%%%%%%%%%%%\n"
+    "                  ####################     %%%%%%%%%%%%%%%%%\n"
+    "                    #################     %%%%%%%%%%%%%%%%%\n"
+    "                     ###############     %%%%%%%%%%%%%%%%\n"
+    "                       ############     %%%%%%%%%%%%%%%\n"
+    "                          ########     %%%%%%%%%%%%%%\n"
+    "                                      %%%%%%%%%%%\n\n");
 
   // Write version information
-  std::cout <<
-    "                   | The OpenMC Monte Carlo Code\n" <<
-    "         Copyright | 2011-2019 MIT and OpenMC contributors\n" <<
-    "           License | http://openmc.readthedocs.io/en/latest/license.html\n" <<
-    "           Version | " << VERSION_MAJOR << '.' << VERSION_MINOR << '.'
-    << VERSION_RELEASE << (VERSION_DEV ? "-dev" : "") << '\n';
+  fmt::print(
+    "                   | The OpenMC Monte Carlo Code\n"
+    "         Copyright | 2011-2020 MIT and OpenMC contributors\n"
+    "           License | http://openmc.readthedocs.io/en/latest/license.html\n"
+    "           Version | {}.{}.{}{}\n", VERSION_MAJOR, VERSION_MINOR,
+    VERSION_RELEASE, VERSION_DEV ? "-dev" : "");
 #ifdef GIT_SHA1
-  std::cout << "          Git SHA1 | " << GIT_SHA1 << '\n';
+  fmt::print("          Git SHA1 | {}\n", GIT_SHA1);
 #endif
 
   // Write the date and time
-  std::cout << "         Date/Time | " << time_stamp() << '\n';
+  fmt::print("         Date/Time | {}\n", time_stamp());
 
 #ifdef OPENMC_MPI
   // Write number of processors
-  std::cout << "     MPI Processes | " << mpi::n_procs << '\n';
+  fmt::print("     MPI Processes | {}\n", mpi::n_procs);
 #endif
 
 #ifdef _OPENMP
   // Write number of OpenMP threads
-  std::cout << "    OpenMP Threads | " << omp_get_max_threads() << '\n';
+  fmt::print("    OpenMP Threads | {}\n", omp_get_max_threads());
 #endif
-  std::cout << '\n';
+  std::cout << std::endl;
 }
 
 //==============================================================================
@@ -126,7 +128,7 @@ header(const char* msg, int level) {
 
   // Print header based on verbosity level.
   if (settings::verbosity >= level)
-    std::cout << '\n' << out << "\n\n";
+    std::cout << '\n' << out << "\n" << std::endl;
 }
 
 //==============================================================================
@@ -146,64 +148,59 @@ extern "C" void print_particle(Particle* p)
   // Display particle type and ID.
   switch (p->type_) {
     case Particle::Type::neutron:
-      std::cout << "Neutron ";
+      fmt::print("Neutron ");
       break;
     case Particle::Type::photon:
-      std::cout << "Photon ";
+      fmt::print("Photon ");
       break;
     case Particle::Type::electron:
-      std::cout << "Electron ";
+      fmt::print("Electron ");
       break;
     case Particle::Type::positron:
-      std::cout << "Positron ";
+      fmt::print("Positron ");
       break;
     default:
-      std::cout << "Unknown Particle ";
+      fmt::print("Unknown Particle ");
   }
-  std::cout << p->id_ << "\n";
+  fmt::print("{}\n", p->id_);
 
   // Display particle geometry hierarchy.
   for (auto i = 0; i < p->n_coord_; i++) {
-    std::cout << "  Level " << i << "\n";
+    fmt::print("  Level {}\n", i);
 
     if (p->coord_[i].cell != C_NONE) {
       const Cell& c {*model::cells[p->coord_[i].cell]};
-      std::cout << "    Cell             = " << c.id_ << "\n";
+      fmt::print("    Cell             = {}\n", c.id_);
     }
 
     if (p->coord_[i].universe != C_NONE) {
       const Universe& u {*model::universes[p->coord_[i].universe]};
-      std::cout << "    Universe         = " << u.id_ << "\n";
+      fmt::print("    Universe         = {}\n", u.id_);
     }
 
     if (p->coord_[i].lattice != C_NONE) {
       const Lattice& lat {*model::lattices[p->coord_[i].lattice]};
-      std::cout << "    Lattice          = " << lat.id_ << "\n";
-      std::cout << "    Lattice position = (" << p->coord_[i].lattice_x
-                << "," << p->coord_[i].lattice_y << ","
-                << p->coord_[i].lattice_z << ")\n";
+      fmt::print("    Lattice          = {}\n", lat.id_);
+      fmt::print("    Lattice position = ({},{},{})\n", p->coord_[i].lattice_x,
+        p->coord_[i].lattice_y, p->coord_[i].lattice_z);
     }
 
-    std::cout << "    r = (" << p->coord_[i].r.x << ", "
-              << p->coord_[i].r.y << ", " << p->coord_[i].r.z << ")\n";
-    std::cout << "    u = (" << p->coord_[i].u.x << ", "
-              << p->coord_[i].u.y << ", " << p->coord_[i].u.z << ")\n";
+    fmt::print("    r = {}\n", p->coord_[i].r);
+    fmt::print("    u = {}\n", p->coord_[i].u);
   }
 
   // Display miscellaneous info.
   if (p->surface_ != 0) {
     const Surface& surf {*model::surfaces[std::abs(p->surface_)-1]};
-    std::cout << "  Surface = " << std::copysign(surf.id_, p->surface_) << "\n";
+    fmt::print("  Surface = {}\n", (p->surface_ > 0) ? surf.id_ : -surf.id_);
   }
-  std::cout << "  Weight = " << p->wgt_ << "\n";
+  fmt::print("  Weight = {}\n", p->wgt_);
   if (settings::run_CE) {
-    std::cout << "  Energy = " << p->E_ << "\n";
+    fmt::print("  Energy = {}\n", p->E_);
   } else {
-    std::cout << "  Energy Group = " << p->g_ << "\n";
+    fmt::print("  Energy Group = {}\n", p->g_);
   }
-  std::cout << "  Delayed Group = " << p->delayed_group_ << "\n";
-
-  std::cout << "\n";
+  fmt::print("  Delayed Group = {}\n\n", p->delayed_group_);
 }
 
 //==============================================================================
@@ -211,68 +208,57 @@ extern "C" void print_particle(Particle* p)
 void print_plot()
 {
   header("PLOTTING SUMMARY", 5);
+  if (settings::verbosity < 5) return;
 
   for (auto pl : model::plots) {
     // Plot id
-    std::cout << "Plot ID: " << pl.id_ << "\n";
+    fmt::print("Plot ID: {}\n", pl.id_);
     // Plot filename
-    std::cout << "Plot file: " << pl.path_plot_ << "\n";
+    fmt::print("Plot file: {}\n", pl.path_plot_);
     // Plot level
-    std::cout << "Universe depth: " << pl.level_ << "\n";
+    fmt::print("Universe depth: {}\n", pl.level_);
 
     // Plot type
     if (PlotType::slice == pl.type_) {
-      std::cout << "Plot Type: Slice" << "\n";
+      fmt::print("Plot Type: Slice\n");
     } else if (PlotType::voxel == pl.type_) {
-      std::cout << "Plot Type: Voxel" << "\n";
+      fmt::print("Plot Type: Voxel\n");
     }
 
     // Plot parameters
-    std::cout << "Origin: " << pl.origin_[0] << " "
-              << pl.origin_[1] << " "
-              << pl.origin_[2] << "\n";
+    fmt::print("Origin: {} {} {}\n", pl.origin_[0], pl.origin_[1], pl.origin_[2]);
 
     if (PlotType::slice == pl.type_) {
-      std::cout << std::setprecision(4)
-                << "Width: "
-                << pl.width_[0] << " "
-                << pl.width_[1] << "\n";
+      fmt::print("Width: {:4} {:4}\n", pl.width_[0], pl.width_[1]);
     } else if (PlotType::voxel == pl.type_) {
-      std::cout << std::setprecision(4)
-                << "Width: "
-                << pl.width_[0] << " "
-                << pl.width_[1] << " "
-                << pl.width_[2] << "\n";
+      fmt::print("Width: {:4} {:4} {:4}\n", pl.width_[0], pl.width_[1],
+        pl.width_[2]);
     }
 
     if (PlotColorBy::cells == pl.color_by_) {
-      std::cout << "Coloring: Cells" << "\n";
+      fmt::print("Coloring: Cells\n");
     } else if (PlotColorBy::mats == pl.color_by_) {
-      std::cout << "Coloring: Materials" << "\n";
+      fmt::print("Coloring: Materials\n");
     }
 
     if (PlotType::slice == pl.type_) {
       switch(pl.basis_) {
       case PlotBasis::xy:
-        std::cout <<  "Basis: XY" << "\n";
+        fmt::print("Basis: XY\n");
         break;
       case PlotBasis::xz:
-        std::cout <<  "Basis: XZ" << "\n";
+        fmt::print("Basis: XZ\n");
         break;
       case PlotBasis::yz:
-        std::cout <<  "Basis: YZ" << "\n";
+        fmt::print("Basis: YZ\n");
         break;
       }
-      std::cout << "Pixels: " << pl.pixels_[0] << " "
-                << pl.pixels_[1] << " " << "\n";
+      fmt::print("Pixels: {} {}\n", pl.pixels_[0], pl.pixels_[1]);
     } else if (PlotType::voxel == pl.type_) {
-      std::cout << "Voxels: " << pl.pixels_[0] << " "
-                << pl.pixels_[1] << " "
-                << pl.pixels_[2] << "\n";
+      fmt::print("Voxels: {} {} {}\n", pl.pixels_[0], pl.pixels_[1], pl.pixels_[2]);
     }
 
-    std::cout << "\n";
-
+    fmt::print("\n");
   }
 }
 
@@ -290,23 +276,22 @@ print_overlap_check()
 
   if (mpi::master) {
     header("cell overlap check summary", 1);
-    std::cout << " Cell ID      No. Overlap Checks\n";
+    fmt::print(" Cell ID      No. Overlap Checks\n");
 
     std::vector<int32_t> sparse_cell_ids;
     for (int i = 0; i < model::cells.size(); i++) {
-      std::cout << " " << std::setw(8) << model::cells[i]->id_ << std::setw(17)
-                << model::overlap_check_count[i] << "\n";
+      fmt::print(" {:8}{:17}\n", model::cells[i]->id_, model::overlap_check_count[i]);
       if (model::overlap_check_count[i] < 10) {
         sparse_cell_ids.push_back(model::cells[i]->id_);
       }
     }
 
-    std::cout << "\n There were " << sparse_cell_ids.size()
-              << " cells with less than 10 overlap checks\n";
+    fmt::print("\n There were {} cells with less than 10 overlap checks\n",
+      sparse_cell_ids.size());
     for (auto id : sparse_cell_ids) {
-      std::cout << " " << id;
+      fmt::print(" {}", id);
     }
-    std::cout << "\n";
+    fmt::print("\n");
   }
 }
 
@@ -315,7 +300,7 @@ print_overlap_check()
 void print_usage()
 {
   if (mpi::master) {
-    std::cout <<
+    fmt::print(
       "Usage: openmc [options] [directory]\n\n"
       "Options:\n"
       "  -c, --volume           Run in stochastic volume calculation mode\n"
@@ -326,8 +311,9 @@ void print_usage()
       "                         or a particle restart file\n"
       "  -s, --threads          Number of OpenMP threads\n"
       "  -t, --track            Write tracks for all particles\n"
+      "  -e, --event            Run using event-based parallelism\n"
       "  -v, --version          Show version information\n"
-      "  -h, --help             Show this message\n";
+      "  -h, --help             Show this message\n");
   }
 }
 
@@ -336,14 +322,14 @@ void print_usage()
 void print_version()
 {
   if (mpi::master) {
-    std::cout << "OpenMC version " << VERSION_MAJOR << '.' << VERSION_MINOR
-      << '.' << VERSION_RELEASE << '\n';
+    fmt::print("OpenMC version {}.{}.{}\n", VERSION_MAJOR, VERSION_MINOR,
+      VERSION_RELEASE);
 #ifdef GIT_SHA1
-    std::cout << "Git SHA1: " << GIT_SHA1 << '\n';
+    fmt::print("Git SHA1: {}\n", GIT_SHA1);
 #endif
-    std::cout << "Copyright (c) 2011-2019 Massachusetts Institute of "
+    fmt::print("Copyright (c) 2011-2019 Massachusetts Institute of "
       "Technology and OpenMC contributors\nMIT/X license at "
-      "<http://openmc.readthedocs.io/en/latest/license.html>\n";
+      "<http://openmc.readthedocs.io/en/latest/license.html>\n");
   }
 }
 
@@ -352,13 +338,13 @@ void print_version()
 void print_columns()
 {
   if (settings::entropy_on) {
-    std::cout <<
+    fmt::print(
       "  Bat./Gen.      k       Entropy         Average k \n"
-      "  =========   ========   ========   ====================\n";
+      "  =========   ========   ========   ====================\n");
   } else {
-    std::cout <<
+    fmt::print(
       "  Bat./Gen.      k            Average k\n"
-      "  =========   ========   ====================\n";
+      "  =========   ========   ====================\n");
   }
 }
 
@@ -366,85 +352,63 @@ void print_columns()
 
 void print_generation()
 {
-  // Save state of cout
-  auto f {std::cout.flags()};
-
   // Determine overall generation and number of active generations
   int i = overall_generation() - 1;
   int n = simulation::current_batch > settings::n_inactive ?
     settings::gen_per_batch*simulation::n_realizations + simulation::current_gen : 0;
 
-  // Set format for values
-  std::cout << std::fixed << std::setprecision(5);
-
   // write out information batch and option independent output
-  std::cout << "  "  << std::setw(9) <<  std::to_string(simulation::current_batch)
-    + "/" + std::to_string(simulation::current_gen) << "   " << std::setw(8)
-    << simulation::k_generation[i];
+  auto batch_and_gen = std::to_string(simulation::current_batch) + "/" +
+    std::to_string(simulation::current_gen);
+  fmt::print("  {:>9}   {:8.5f}", batch_and_gen, simulation::k_generation[i]);
 
   // write out entropy info
   if (settings::entropy_on) {
-    std::cout << "   " << std::setw(8) << simulation::entropy[i];
+    fmt::print("   {:8.5f}", simulation::entropy[i]);
   }
 
   if (n > 1) {
-    std::cout << "   " << std::setw(8) << simulation::keff << " +/-"
-      << std::setw(8) << simulation::keff_std;
+    fmt::print("   {:8.5f} +/-{:8.5f}", simulation::keff, simulation::keff_std);
   }
-  std::cout << '\n';
-
-  // Restore state of cout
-  std::cout.flags(f);
+  std::cout << std::endl;
 }
 
 //==============================================================================
 
 void print_batch_keff()
 {
-  // Save state of cout
-  auto f {std::cout.flags()};
-
   // Determine overall generation and number of active generations
   int i = simulation::current_batch*settings::gen_per_batch - 1;
   int n = simulation::n_realizations*settings::gen_per_batch;
 
-  // Set format for values
-  std::cout << std::fixed << std::setprecision(5);
-
   // write out information batch and option independent output
-  std::cout << "  "  << std::setw(9) <<  std::to_string(simulation::current_batch)
-    + "/" + std::to_string(settings::gen_per_batch) << "   " << std::setw(8)
-    << simulation::k_generation[i];
+  auto batch_and_gen = std::to_string(simulation::current_batch) + "/" +
+    std::to_string(settings::gen_per_batch);
+  fmt::print("  {:>9}   {:8.5f}", batch_and_gen, simulation::k_generation[i]);
 
   // write out entropy info
   if (settings::entropy_on) {
-    std::cout << "   " << std::setw(8) << simulation::entropy[i];
+    fmt::print("   {:8.5f}", simulation::entropy[i]);
   }
 
   if (n > 1) {
-    std::cout << "   " << std::setw(8) << simulation::keff << " +/-"
-      << std::setw(8) << simulation::keff_std;
+    fmt::print("   {:8.5f} +/-{:8.5f}", simulation::keff, simulation::keff_std);
   }
   std::cout << std::endl;
-
-  // Restore state of cout
-  std::cout.flags(f);
 }
 
 //==============================================================================
 
 void show_time(const char* label, double secs, int indent_level=0)
 {
-  std::cout << std::string(2*indent_level, ' ');
   int width = 33 - indent_level*2;
-  std::cout << " " << std::setw(width) << std::left << label << " = "
-    << std::setw(10) << std::right << secs << " seconds\n";
+  fmt::print("{0:{1}} {2:<{3}} = {4:>10.4e} seconds\n",
+    "", 2*indent_level, label, width, secs);
 }
 
 void show_rate(const char* label, double particles_per_sec)
 {
-  std::cout << " " << std::setw(33) << std::left << label << " = " <<
-    particles_per_sec << " particles/second\n";
+  fmt::print(" {:<33} = {:.6} particles/second\n", label, particles_per_sec);
 }
 
 void print_runtime()
@@ -453,22 +417,27 @@ void print_runtime()
 
   // display header block
   header("Timing Statistics", 6);
-
-  // Save state of cout
-  auto f {std::cout.flags()};
+  if (settings::verbosity < 6) return;
 
   // display time elapsed for various sections
-  std::cout << std::scientific << std::setprecision(4);
   show_time("Total time for initialization", time_initialize.elapsed());
   show_time("Reading cross sections", time_read_xs.elapsed(), 1);
   show_time("Total time in simulation", time_inactive.elapsed() +
     time_active.elapsed());
   show_time("Time in transport only", time_transport.elapsed(), 1);
-  if (settings::run_mode == RUN_MODE_EIGENVALUE) {
+  if (settings::event_based) {
+    show_time("Particle initialization", time_event_init.elapsed(), 2);
+    show_time("XS lookups", time_event_calculate_xs.elapsed(), 2);
+    show_time("Advancing", time_event_advance_particle.elapsed(), 2);
+    show_time("Surface crossings", time_event_surface_crossing.elapsed(), 2);
+    show_time("Collisions", time_event_collision.elapsed(), 2);
+    show_time("Particle death", time_event_death.elapsed(), 2);
+  }
+  if (settings::run_mode == RunMode::EIGENVALUE) {
     show_time("Time in inactive batches", time_inactive.elapsed(), 1);
   }
   show_time("Time in active batches", time_active.elapsed(), 1);
-  if (settings::run_mode == RUN_MODE_EIGENVALUE) {
+  if (settings::run_mode == RunMode::EIGENVALUE) {
     show_time("Time synchronizing fission bank", time_bank.elapsed(), 1);
     show_time("Sampling source sites", time_bank_sample.elapsed(), 2);
     show_time("SEND/RECV source sites", time_bank_sendrecv.elapsed(), 2);
@@ -476,9 +445,6 @@ void print_runtime()
   show_time("Time accumulating tallies", time_tallies.elapsed(), 1);
   show_time("Total time for finalization", time_finalize.elapsed());
   show_time("Total time elapsed", time_total.elapsed());
-
-  // Restore state of cout
-  std::cout.flags(f);
 
   // Calculate particle rate in active/inactive batches
   int n_active = simulation::current_batch - settings::n_inactive;
@@ -506,15 +472,11 @@ void print_runtime()
   }
 
   // display calculation rate
-  std::cout << std::setprecision(6) << std::showpoint;
   if (!(settings::restart_run && (simulation::restart_batch >= settings::n_inactive))
       && settings::n_inactive > 0) {
     show_rate("Calculation Rate (inactive)", speed_inactive);
   }
   show_rate("Calculation Rate (active)", speed_active);
-
-  // Restore state of cout
-  std::cout.flags(f);
 }
 
 //==============================================================================
@@ -522,9 +484,9 @@ void print_runtime()
 std::pair<double, double>
 mean_stdev(const double* x, int n)
 {
-  double mean = x[RESULT_SUM] / n;
-  double stdev = n > 1 ? std::sqrt((x[RESULT_SUM_SQ]/n
-    - mean*mean)/(n - 1)) : 0.0;
+  double mean = x[static_cast<int>(TallyResult::SUM)] / n;
+  double stdev = n > 1 ? std::sqrt(std::max(0.0, (
+    x[static_cast<int>(TallyResult::SUM_SQ)]/n - mean*mean)/(n - 1))) : 0.0;
   return {mean, stdev};
 }
 
@@ -532,11 +494,9 @@ mean_stdev(const double* x, int n)
 
 void print_results()
 {
-  // Save state of cout
-  auto f {std::cout.flags()};
-
   // display header block for results
   header("Results", 4);
+  if (settings::verbosity < 4) return;
 
   // Calculate t-value for confidence intervals
   int n = simulation::n_realizations;
@@ -550,52 +510,46 @@ void print_results()
     t_n3 = 1.0;
   }
 
-  // Set formatting for floats
-  std::cout << std::fixed << std::setprecision(5);
-
   // write global tallies
   const auto& gt = simulation::global_tallies;
   double mean, stdev;
   if (n > 1) {
-    if (settings::run_mode == RUN_MODE_EIGENVALUE) {
-      std::tie(mean, stdev) = mean_stdev(&gt(K_COLLISION, 0), n);
-      std::cout << " k-effective (Collision)     = "
-        << mean << " +/- " << t_n1 * stdev << '\n';
-      std::tie(mean, stdev) = mean_stdev(&gt(K_TRACKLENGTH, 0), n);
-      std::cout << " k-effective (Track-length)  = "
-        << mean << " +/- " << t_n1 * stdev << '\n';
-      std::tie(mean, stdev) = mean_stdev(&gt(K_ABSORPTION, 0), n);
-      std::cout << " k-effective (Absorption)    = "
-        << mean << " +/- " << t_n1 * stdev << '\n';
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      std::tie(mean, stdev) = mean_stdev(&gt(GlobalTally::K_COLLISION, 0), n);
+      fmt::print(" k-effective (Collision)     = {:.5f} +/- {:.5f}\n",
+        mean, t_n1 * stdev);
+      std::tie(mean, stdev) = mean_stdev(&gt(GlobalTally::K_TRACKLENGTH, 0), n);
+      fmt::print(" k-effective (Track-length)  = {:.5f} +/- {:.5f}\n",
+        mean, t_n1 * stdev);
+      std::tie(mean, stdev) = mean_stdev(&gt(GlobalTally::K_ABSORPTION, 0), n);
+      fmt::print(" k-effective (Absorption)    = {:.5f} +/- {:.5f}\n",
+        mean, t_n1 * stdev);
       if (n > 3) {
         double k_combined[2];
         openmc_get_keff(k_combined);
-        std::cout << " Combined k-effective        = "
-          << k_combined[0] << " +/- " << t_n3 * k_combined[1] << '\n';
+        fmt::print(" Combined k-effective        = {:.5f} +/- {:.5f}\n",
+          k_combined[0], k_combined[1]);
       }
     }
-    std::tie(mean, stdev) = mean_stdev(&gt(LEAKAGE, 0), n);
-    std::cout << " Leakage Fraction            = "
-      << mean << " +/- " << t_n1 * stdev << '\n';
+    std::tie(mean, stdev) = mean_stdev(&gt(GlobalTally::LEAKAGE, 0), n);
+    fmt::print(" Leakage Fraction            = {:.5f} +/- {:.5f}\n",
+      mean, t_n1 * stdev);
   } else {
     if (mpi::master) warning("Could not compute uncertainties -- only one "
       "active batch simulated!");
 
-    if (settings::run_mode == RUN_MODE_EIGENVALUE) {
-      std::cout << " k-effective (Collision)    = "
-        << gt(K_COLLISION, RESULT_SUM) / n << '\n';
-      std::cout << " k-effective (Track-length) = "
-        << gt(K_TRACKLENGTH, RESULT_SUM) / n << '\n';
-      std::cout << " k-effective (Absorption)   = "
-        << gt(K_ABSORPTION, RESULT_SUM) / n << '\n';
+    if (settings::run_mode == RunMode::EIGENVALUE) {
+      fmt::print(" k-effective (Collision)    = {:.5f}\n",
+        gt(GlobalTally::K_COLLISION, TallyResult::SUM) / n);
+      fmt::print(" k-effective (Track-length) = {:.5f}\n",
+        gt(GlobalTally::K_TRACKLENGTH, TallyResult::SUM) / n);
+      fmt::print(" k-effective (Absorption)   = {:.5f}\n",
+        gt(GlobalTally::K_ABSORPTION, TallyResult::SUM) / n);
     }
-    std::cout << " Leakage Fraction           = "
-      << gt(LEAKAGE, RESULT_SUM) / n << '\n';
+    fmt::print(" Leakage Fraction           = {:.5f}\n",
+      gt(GlobalTally::LEAKAGE, TallyResult::SUM) / n);
   }
-  std::cout << '\n';
-
-  // Restore state of cout
-  std::cout.flags(f);
+  fmt::print("\n");
 }
 
 //==============================================================================
@@ -617,7 +571,6 @@ const std::unordered_map<int, const char*> score_names = {
   {SCORE_FISS_Q_PROMPT,      "Prompt fission power"},
   {SCORE_FISS_Q_RECOV,       "Recoverable fission power"},
   {SCORE_CURRENT,            "Current"},
-  {SCORE_HEATING,            "Heating"},
 };
 
 //! Create an ASCII output file showing all tally results.
@@ -630,11 +583,20 @@ write_tallies()
   // Open the tallies.out file.
   std::ofstream tallies_out;
   tallies_out.open("tallies.out", std::ios::out | std::ios::trunc);
-  tallies_out << std::setprecision(6);
 
   // Loop over each tally.
   for (auto i_tally = 0; i_tally < model::tallies.size(); ++i_tally) {
     const auto& tally {*model::tallies[i_tally]};
+
+    // Write header block.
+    std::string tally_header("TALLY " + std::to_string(tally.id_));
+    if (!tally.name_.empty()) tally_header += ": " + tally.name_;
+    fmt::print(tallies_out, "{}\n\n", header(tally_header));
+
+    if (!tally.writable_) {
+      fmt::print(tallies_out, " Internal\n\n");
+      continue;
+    }
 
     // Calculate t-value for confidence intervals
     double t_value = 1;
@@ -643,37 +605,36 @@ write_tallies()
       t_value = t_percentile(1 - alpha*0.5, tally.n_realizations_ - 1);
     }
 
-    // Write header block.
-    std::string tally_header("TALLY " + std::to_string(tally.id_));
-    if (!tally.name_.empty()) tally_header += ": " + tally.name_;
-    tallies_out << header(tally_header) << "\n\n";
-
     // Write derivative information.
     if (tally.deriv_ != C_NONE) {
       const auto& deriv {model::tally_derivs[tally.deriv_]};
       switch (deriv.variable) {
-      case DIFF_DENSITY:
-        tallies_out << " Density derivative  Material "
-          << std::to_string(deriv.diff_material) << "\n";
+      case DerivativeVariable::DENSITY:
+        fmt::print(tallies_out, " Density derivative Material {}\n",
+          deriv.diff_material);
         break;
-      case DIFF_NUCLIDE_DENSITY:
-        tallies_out << " Nuclide density derivative  Material "
-          << std::to_string(deriv.diff_material) << "  Nuclide "
-          << data::nuclides[deriv.diff_nuclide]->name_ << "\n";
+      case DerivativeVariable::NUCLIDE_DENSITY:
+        fmt::print(tallies_out, " Nuclide density derivative Material {} Nuclide {}\n",
+          deriv.diff_material, data::nuclides[deriv.diff_nuclide]->name_);
         break;
-      case DIFF_TEMPERATURE:
-        tallies_out << " Temperature derivative  Material "
-          << std::to_string(deriv.diff_material) << "\n";
+      case DerivativeVariable::TEMPERATURE:
+        fmt::print(tallies_out, " Temperature derivative Material {}\n",
+          deriv.diff_material);
         break;
       default:
-        fatal_error("Differential tally dependent variable for tally "
-          + std::to_string(tally.id_) + " not defined in output.cpp");
+        fatal_error(fmt::format("Differential tally dependent variable for "
+          "tally {} not defined in output.cpp", tally.id_));
       }
     }
 
+    // Initialize Filter Matches Object
+    std::vector<FilterMatch> filter_matches;
+    // Allocate space for tally filter matches
+    filter_matches.resize(model::tally_filters.size());
+
     // Loop over all filter bin combinations.
-    auto filter_iter = FilterBinIter(tally, false);
-    auto end = FilterBinIter(tally, true);
+    auto filter_iter = FilterBinIter(tally, false, &filter_matches);
+    auto end = FilterBinIter(tally, true, &filter_matches);
     for (; filter_iter != end; ++filter_iter) {
       auto filter_index = filter_iter.index_;
 
@@ -684,9 +645,9 @@ write_tallies()
         if (filter_index % tally.strides(i) == 0) {
           auto i_filt = tally.filters(i);
           const auto& filt {*model::tally_filters[i_filt]};
-          auto& match {simulation::filter_matches[i_filt]};
-          tallies_out << std::string(indent+1, ' ')
-            << filt.text_label(match.i_bin_) << "\n";
+          auto& match {filter_matches[i_filt]};
+          fmt::print(tallies_out, "{0:{1}}{2}\n", "", indent + 1,
+            filt.text_label(match.i_bin_));
         }
         indent += 2;
       }
@@ -696,14 +657,14 @@ write_tallies()
       for (auto i_nuclide : tally.nuclides_) {
         // Write label for this nuclide bin.
         if (i_nuclide == -1) {
-          tallies_out << std::string(indent+1, ' ') << "Total Material\n";
+          fmt::print(tallies_out, "{0:{1}}Total Material\n", "", indent + 1);
         } else {
           if (settings::run_CE) {
-            tallies_out << std::string(indent+1, ' ')
-              << data::nuclides[i_nuclide]->name_ << "\n";
+            fmt::print(tallies_out, "{0:{1}}{2}\n", "", indent + 1,
+              data::nuclides[i_nuclide]->name_);
           } else {
-            tallies_out << std::string(indent+1, ' ')
-              << data::nuclides_MG[i_nuclide].name << "\n";
+            fmt::print(tallies_out, "{0:{1}}{2}\n", "", indent + 1,
+              data::mg.nuclides_[i_nuclide].name);
           }
         }
 
@@ -715,9 +676,8 @@ write_tallies()
           double mean, stdev;
           std::tie(mean, stdev) = mean_stdev(
             &tally.results_(filter_index, score_index, 0), tally.n_realizations_);
-          tallies_out << std::string(indent+1, ' ')  << std::left
-            << std::setw(36) << score_name << " " << mean << " +/- "
-            << t_value * stdev << "\n";
+          fmt::print(tallies_out, "{0:{1}}{2:<36} {3:.6} +/- {4:.6}\n",
+            "", indent + 1, score_name, mean, t_value * stdev);
           score_index += 1;
         }
         indent -= 2;
