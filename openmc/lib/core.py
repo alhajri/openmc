@@ -60,6 +60,8 @@ _dll.openmc_run.restype = c_int
 _dll.openmc_run.errcheck = _error_handler
 _dll.openmc_reset.restype = c_int
 _dll.openmc_reset.errcheck = _error_handler
+_dll.openmc_reset_timers.restype = c_int
+_dll.openmc_reset_timers.errcheck = _error_handler
 _run_linsolver_argtypes = [_array_1d_dble, _array_1d_dble, _array_1d_dble,
                            c_double]
 _dll.openmc_run_linsolver.argtypes = _run_linsolver_argtypes
@@ -182,16 +184,15 @@ def init(args=None, intracomm=None):
     """
     if args is not None:
         args = ['openmc'] + list(args)
-        argc = len(args)
-
-        # Create the argv array. Note that it is actually expected to be of
-        # length argc + 1 with the final item being a null pointer.
-        argv = (POINTER(c_char) * (argc + 1))()
-        for i, arg in enumerate(args):
-            argv[i] = create_string_buffer(arg.encode())
     else:
-        argc = 0
-        argv = None
+        args = ['openmc']
+
+    argc = len(args)
+    # Create the argv array. Note that it is actually expected to be of
+    # length argc + 1 with the final item being a null pointer.
+    argv = (POINTER(c_char) * (argc + 1))()
+    for i, arg in enumerate(args):
+        argv[i] = create_string_buffer(arg.encode())
 
     if intracomm is not None:
         # If an mpi4py communicator was passed, convert it to void* to be passed
@@ -300,8 +301,13 @@ def plot_geometry():
 
 
 def reset():
-    """Reset tallies and timers."""
+    """Reset tally results"""
     _dll.openmc_reset()
+
+
+def reset_timers():
+    """Reset timers."""
+    _dll.openmc_reset_timers()
 
 
 def run():
