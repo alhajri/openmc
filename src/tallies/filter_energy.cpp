@@ -127,7 +127,7 @@ EnergyoutFilter::text_label(int bin) const
 //==============================================================================
 
 void
-ParentEnergyFilter::get_all_bins(const Particle* p, int estimator,
+ParentEnergyFilter::get_all_bins(const Particle* p, TallyEstimator estimator,
                               FilterMatch& match) const
 {
   if (p->E_parent_ >= bins_.front() && p->E_parent_ <= bins_.back()) {

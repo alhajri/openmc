@@ -12,7 +12,7 @@ namespace openmc {
 
 
 void
-MeshbornFilter::get_all_bins(const Particle* p, int estimator, FilterMatch& match)
+MeshbornFilter::get_all_bins(const Particle* p, TallyEstimator estimator, FilterMatch& match)
 const
 {
  auto bin = model::meshes[mesh_]->get_bin(p->r_born_);
