@@ -26,18 +26,7 @@ std::string
 MeshbornFilter::text_label(int bin) const
 {
   auto& mesh = *model::meshes[mesh_];
-  int n_dim = mesh.n_dimension_;
-
-  int ijk[n_dim];
-  mesh.get_indices_from_bin(bin, ijk);
-
-  std::stringstream out;
-  out << "Mesh Born Index (" << ijk[0];
-  if (n_dim > 1) out << ", " << ijk[1];
-  if (n_dim > 2) out << ", " << ijk[2];
-  out << ")";
-
-  return out.str();
+  return mesh.bin_label(bin);
 }
 
 //==============================================================================
