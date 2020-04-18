@@ -1349,16 +1349,7 @@ class ImportanceFilter(Filter):
             XML element containing filter data
 
         """
-
-            def to_xml_element(self):
-        """Return XML Element representing the Filter.
-
-        Returns
-        -------
-        element : xml.etree.ElementTree.Element
-            XML element containing filter data
-
-        """
+        
         element = ET.Element('filter')
         element.set('id', str(self.id))
         element.set('type', self.short_name.lower())
