@@ -115,6 +115,8 @@ Filter* Filter::create(const std::string& type, int32_t id)
     model::tally_filters.push_back(std::make_unique<EnergyoutFilter>());
   } else if (type == "parentenergy") {
     model::tally_filters.push_back(std::make_unique<ParentEnergyFilter>());
+  } else if (type == "importance") {
+    model::tally_filters.push_back(std::make_unique<ImportanceFilter>());
   } else if (type == "legendre") {
     model::tally_filters.push_back(std::make_unique<LegendreFilter>());
   } else if (type == "material") {
