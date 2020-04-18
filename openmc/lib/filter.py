@@ -17,9 +17,9 @@ from .mesh import RegularMesh
 __all__ = ['Filter', 'AzimuthalFilter', 'CellFilter',
            'CellbornFilter', 'CellfromFilter', 'DistribcellFilter',
            'DelayedGroupFilter', 'EnergyFilter', 'EnergyoutFilter',
-           'EnergyFunctionFilter', 'LegendreFilter', 'MaterialFilter', 'MeshFilter',
-           'MeshSurfaceFilter', 'MuFilter', 'PolarFilter', 'SphericalHarmonicsFilter',
-           'SpatialLegendreFilter', 'SurfaceFilter',
+           'EnergyFunctionFilter', 'ImportanceFilter', 'LegendreFilter', 'MaterialFilter', 
+           'MeshFilter','MeshSurfaceFilter', 'MuFilter', 'PolarFilter', 
+           'SphericalHarmonicsFilter', 'SpatialLegendreFilter', 'SurfaceFilter',
            'UniverseFilter', 'ZernikeFilter', 'ZernikeRadialFilter', 'filters']
 
 # Tally functions
@@ -58,6 +58,19 @@ _dll.openmc_filter_set_id.errcheck = _error_handler
 _dll.openmc_get_filter_index.argtypes = [c_int32, POINTER(c_int32)]
 _dll.openmc_get_filter_index.restype = c_int
 _dll.openmc_get_filter_index.errcheck = _error_handler
+_dll.openmc_importance_filter_get_importance.argtypes = [
+    c_int32, POINTER(POINTER(c_double)), POINTER(c_size_t)]
+_dll.openmc_importance_filter_get_importance.restype = c_int
+_dll.openmc_importance_filter_get_importance.errcheck = _error_handler
+_dll.openmc_importance_filter_set_importance.argtypes = [c_int32, c_size_t, POINTER(c_double)]
+_dll.openmc_importance_filter_set_importance.restype = c_int
+_dll.openmc_importance_filter_set_importance.errcheck = _error_handler
+_dll.openmc_importance_filter_get_mesh.argtypes = [c_int32, POINTER(c_int32)]
+_dll.openmc_importance_filter_get_mesh.restype = c_int
+_dll.openmc_importance_filter_get_mesh.errcheck = _error_handler
+_dll.openmc_importance_filter_set_mesh.argtypes = [c_int32, c_int32]
+_dll.openmc_importance_filter_set_mesh.restype = c_int
+_dll.openmc_importance_filter_set_mesh.errcheck = _error_handler
 _dll.openmc_legendre_filter_get_order.argtypes = [c_int32, POINTER(c_int)]
 _dll.openmc_legendre_filter_get_order.restype = c_int
 _dll.openmc_legendre_filter_get_order.errcheck = _error_handler
@@ -256,6 +269,43 @@ class EnergyFunctionFilter(Filter):
         return as_array(array_p, (n.value, ))
 
 
+class ImportanceFilter(Filter):
+    filter_type = 'importance'
+
+    def __init__(self, importance=None, mesh=None, uid=None, new=True, index=None):
+        super().__init__(uid, new, index)
+        if importance is not None:
+            self.importance = importance
+        if mesh is not None:
+            self.mesh = mesh
+
+    @property
+    def importance(self):
+        importance = POINTER(c_double)()
+        n = c_size_t()
+        _dll.openmc_importance_filter_get_importance(self._index, importance, n)
+        return as_array(importance, (n.value,))
+
+    @property
+    def mesh(self):
+        index_mesh = c_int32()
+        _dll.openmc_importance_filter_get_mesh(self._index, index_mesh)
+        return RegularMesh(index=index_mesh.value)
+
+    @importance.setter
+    def importance(self, importance):
+        # Get numpy array as a double*
+        importance = np.asarray(importance)
+        importance_p = importance.ctypes.data_as(POINTER(c_double))
+
+        _dll.openmc_importance_filter_set_importance(
+            self._index, len(importance), importance_p)
+
+    @mesh.setter
+    def mesh(self, mesh):
+        _dll.openmc_importance_filter_set_mesh(self._index, mesh._index)
+
+
 class LegendreFilter(Filter):
     filter_type = 'legendre'
 
@@ -423,6 +473,7 @@ _FILTER_TYPE_MAP = {
     'energy': EnergyFilter,
     'energyout': EnergyoutFilter,
     'energyfunction': EnergyFunctionFilter,
+    'importance': ImportanceFilter,
     'legendre': LegendreFilter,
     'material': MaterialFilter,
     'mesh': MeshFilter,

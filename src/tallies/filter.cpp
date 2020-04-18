@@ -17,6 +17,7 @@
 #include "openmc/tallies/filter_distribcell.h"
 #include "openmc/tallies/filter_energyfunc.h"
 #include "openmc/tallies/filter_energy.h"
+#include "openmc/tallies/filter_importance.h"
 #include "openmc/tallies/filter_legendre.h"
 #include "openmc/tallies/filter_material.h"
 #include "openmc/tallies/filter_mesh.h"
