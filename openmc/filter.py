@@ -1268,7 +1268,7 @@ class ImportanceFilter(Filter):
         self._mesh = mesh
 
     @importance.setter
-    def importance(self, bins):
+    def importance(self, importance):
         self._importance = np.asarray(importance)
 
     def can_merge(self, other):
