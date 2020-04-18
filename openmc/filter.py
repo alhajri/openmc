@@ -1267,7 +1267,7 @@ class ImportanceFilter(Filter):
         cv.check_type('filter mesh', mesh, openmc.MeshBase)
         self._mesh = mesh
 
-    @Fimportance.setter
+    @importance.setter
     def importance(self, bins):
         self._importance = np.asarray(importance)
 
@@ -1349,7 +1349,7 @@ class ImportanceFilter(Filter):
             XML element containing filter data
 
         """
-        
+
         element = ET.Element('filter')
         element.set('id', str(self.id))
         element.set('type', self.short_name.lower())
