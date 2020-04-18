@@ -50,7 +50,7 @@ ImportanceFilter::set_importance(gsl::span<const double> importance)
     importance_.push_back(importance[i]);
   }
 
-  n_bins_ = 1 // This is probably redundant, I set this in set_mesh()
+  n_bins_ = 1; // This is probably redundant, I set this in set_mesh()
 }
 
 void
