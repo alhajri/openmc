@@ -1236,6 +1236,10 @@ class ImportanceFilter(Filter):
         return string
 
     @property
+    def bins(self):
+        raise AttributeError('EnergyFunctionFilters have no bins.')
+    
+    @property
     def num_bins(self):
         return 1
     
