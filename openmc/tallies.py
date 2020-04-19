@@ -3086,7 +3086,7 @@ class Tallies(cv.CheckedList):
         already_written = set()
         for tally in self:
             for f in tally.filters:
-                if isinstance(f, openmc.MeshFilter):
+                if isinstance(f, openmc.MeshFilter) or isinstance(f, openmc.ImportanceFilter):
                     if f.mesh.id not in already_written:
                         if len(f.mesh.name) > 0:
                             root_element.append(ET.Comment(f.mesh.name))
