@@ -1235,6 +1235,14 @@ class ImportanceFilter(Filter):
         string += '{: <16}=\t{}\n'.format('\tID', self.id)
         return string
 
+    @property
+    def num_bins(self):
+        return 1
+    
+    @bins.setter
+    def bins(self, bins):
+        raise RuntimeError('EnergyFunctionFilters have no bins.')
+
     @classmethod
     def from_hdf5(cls, group, **kwargs):
         if group['type'][()].decode() != cls.short_name.lower():
