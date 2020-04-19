@@ -1246,11 +1246,12 @@ class ImportanceFilter(Filter):
             raise ValueError(cls.__name__ + " requires a 'meshes' keyword "
                              "argument.")
 
-        mesh_id = group['bins'][()]
+        mesh_id = group['mesh'][()]
         mesh_obj = kwargs['meshes'][mesh_id]
+        importance = group['importance'][()]
         filter_id = int(group.name.split('/')[-1].lstrip('filter '))
 
-        out = cls(mesh_obj, filter_id=filter_id)
+        out = cls(importance,mesh_obj, filter_id=filter_id)
 
         return out
 
