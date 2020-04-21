@@ -339,6 +339,8 @@ public:
 
   std::vector<double> flux_derivs_;  // for derivatives for this particle
 
+  std::vector<std::vector<double>> cumulative_sensitivities_;  // for sensitivities for this particle
+
   std::vector<FilterMatch> filter_matches_; // tally filter matches
 
   std::vector<std::vector<Position>> tracks_; // tracks for outputting to file

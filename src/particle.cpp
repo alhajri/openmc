@@ -24,6 +24,7 @@
 #include "openmc/source.h"
 #include "openmc/surface.h"
 #include "openmc/simulation.h"
+#include "openmc/tallies/sensitivity.h"
 #include "openmc/tallies/derivative.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/tallies/tally_scoring.h"
@@ -112,6 +113,10 @@ Particle::from_source(const Bank* src)
   n_collision_ = 0;
   fission_ = false;
   std::fill(flux_derivs_.begin(), flux_derivs_.end(), 0.0);
+
+  for (auto it = cumulative_sensitivities_.begin(); it != cumulative_sensitivities_.end(); it++){
+    std::fill(it->begin(), it->end(), 0.0);
+  } // might be a more elegent way, but this is what i'm going with for now
 
   // Copy attributes from source bank site
   type_ = src->particle;
@@ -240,6 +245,14 @@ Particle::event_advance()
   if (!model::active_tallies.empty()) {
     score_track_derivative(this, distance);
   }
+
+  // Score flux sensitivity accumulators for differential tallies.
+  // I could move them to the same if statement as above, but this is 
+  // cleaner to keep 'em separated
+  if (!model::active_tallies.empty()) {
+    score_track_sensitivity(this, distance);
+  }
+
 }
 
 void
@@ -342,6 +355,9 @@ Particle::event_collide()
 
   // Score flux derivative accumulators for differential tallies.
   if (!model::active_tallies.empty()) score_collision_derivative(this);
+
+  // Score flux sensitivity accumulators for differential tallies.
+  if (!model::active_tallies.empty()) score_collision_sensitivity(this);
 }
 
 void

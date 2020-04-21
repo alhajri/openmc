@@ -45,7 +45,7 @@ void
 apply_derivative_to_score(const Particle* p, int i_tally, int i_nuclide,
   double atom_density, int score_bin, double& score);
 
-//! Adjust diff tally flux derivatives for a particle scattering event.
+//! Adjust diff tally flux derivatives for a particle scattering event. 
 //
 //! Note that this subroutine will be called after absorption events in
 //! addition to scattering events, but any flux derivatives scored after an

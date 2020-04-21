@@ -1,0 +1,44 @@
+Questions for Sterling:
+
+1. Create a "weighted" mesh? i.e. a mesh where each cell has a weight.
+would it be easier/better to create a new derived mesh with a new data
+member, or better to save the weights as a separate object?
+
+2. Where are the different threadprivate components of tallyderivs 
+combined to populate the full tally?
+
+Mesh object:
+
+index = i,j,k values
+bin = actual location (unique integer for each cell)
+
+2. What is mesh_map and what is int32_t?
+
+
+Questions for Shikhar:
+
+1. Does CMFD work with rectilinear meshes? or is it limited to regular 
+meshes
+
+
+What I need to do:
+
+1. Create a new type of mesh and modify the bins_crossed function to 
+multiply the tracklength by a weight for each cell
+
+2. Get the information from the adjoint obtained by CMFD to OpenMC
+
+3. For each track, I just need one tally... so I really need the 
+sum over bins_crossed*bin_weights. 
+ i.e. get lengths and bins from bins_crossed, then use bins to get 
+ adjoint for the bins, then take adjoint dot lengths.
+
+4. Do I need separate adjoint weighted filters for each filter type
+I intend to use? Or do I just need one filter that has one bin, its 
+only job is to modify the estimator?
+
+5. I need a 2-batch system because the denominator is tallied in the
+second batch.
+
+6. $OMP private for tallies that then get combined. But, the tallies 
+need to get carried over multiple generations (2). Add pointer to bank?

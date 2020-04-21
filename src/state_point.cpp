@@ -23,6 +23,7 @@
 #include "openmc/settings.h"
 #include "openmc/simulation.h"
 #include "openmc/tallies/derivative.h"
+#include "openmc/tallies/sensitivity.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/filter_mesh.h"
 #include "openmc/tallies/tally.h"
@@ -134,6 +135,31 @@ openmc_statepoint_write(const char* filename, bool* write_source)
       close_group(derivs_group);
     }
 
+    // Write information for sensitivities
+    if (!model::tally_sens.empty()) {
+      hid_t sens_group = create_group(tallies_group, "sensitivities");
+      for (const auto& sens : model::tally_sens) {
+        hid_t sens_group = create_group(sens_group,
+          "sensitivity " + std::to_string(sens.id));
+        write_dataset(sens_group, "material", sens.sens_material);
+        if (sens.variable == SensitivityVariable::CROSS_SECTION) {
+          write_dataset(sens_group, "independent variable", "cross section");
+          write_dataset(sens_group, "nuclide",
+            data::nuclides[sens.sens_nuclide]->name_);
+          // write dataset score/reaction
+        } else if (sens.variable == SensitivityVariable::MULTIPOLE) {
+          write_dataset(sens_group, "independent variable", "nuclide_density");
+          write_dataset(sens_group, "nuclide",
+            data::nuclides[sens.sens_nuclide]->name_);
+        } else {
+          fatal_error("Independent variable for sensitivity "
+            + std::to_string(sens.id) + " not defined in state_point.cpp");
+        }
+        close_group(sens_group);
+      }
+      close_group(sens_group);
+    }
+
     // Write information for filters
     hid_t filters_group = create_group(tallies_group, "filters");
     write_attribute(filters_group, "n_filters", model::tally_filters.size());
@@ -222,6 +248,9 @@ openmc_statepoint_write(const char* filename, bool* write_source)
 
         if (tally->deriv_ != C_NONE) write_dataset(tally_group, "derivative",
           model::tally_derivs[tally->deriv_].id);
+
+        if (tally->sens_ != C_NONE) write_dataset(tally_group, "sensitivity",
+          model::tally_sens[tally->sens_].id);
 
         // Write the tally score bins
         std::vector<std::string> scores;

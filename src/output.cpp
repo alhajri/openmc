@@ -35,6 +35,7 @@
 #include "openmc/simulation.h"
 #include "openmc/surface.h"
 #include "openmc/tallies/derivative.h"
+#include "openmc/tallies/sensitivity.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/tallies/tally_scoring.h"
@@ -623,6 +624,25 @@ write_tallies()
         break;
       default:
         fatal_error(fmt::format("Differential tally dependent variable for "
+          "tally {} not defined in output.cpp", tally.id_));
+      }
+    }
+
+
+    // Write sensitivity information.
+    if (tally.sens_ != C_NONE) {
+      const auto& sens {model::tally_sens[tally.sens_]};
+      switch (sens.variable) {
+      case SensitivityVariable::CROSS_SECTION:
+        fmt::print(tallies_out, " Cross section sensitivity Material {} Nuclide {} Reaction {}\n",
+          sens.sens_material, data::nuclides[sens.sens_nuclide]->name_, reaction___);
+        break;
+      case SensitivityVariable::MULTIPOLE:
+        fmt::print(tallies_out, " Multipole sensitivity Material {} Nuclide {}\n",
+          sens.sens_material, data::nuclides[sens.sens_nuclide]->name_);
+        break;
+      default:
+        fatal_error(fmt::format("Sensitivity tally dependent variable for "
           "tally {} not defined in output.cpp", tally.id_));
       }
     }

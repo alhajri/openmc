@@ -19,6 +19,7 @@
 #include "openmc/state_point.h"
 #include "openmc/timer.h"
 #include "openmc/tallies/derivative.h"
+#include "openmc/tallies/sensitivity.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/tallies/trigger.h"
@@ -521,11 +522,24 @@ void initialize_history_partial(Particle* p)
   // Prepare to write out particle track.
   if (p->write_track_) add_particle_track(*p);
 
-  // Every particle starts with no accumulated flux derivative.
+  // Every particle starts with no accumulated flux derivative and 
+  // no accumulated sensitivities.
   if (!model::active_tallies.empty())
   {
     p->flux_derivs_.resize(model::tally_derivs.size(), 0.0);
     std::fill(p->flux_derivs_.begin(), p->flux_derivs_.end(), 0.0);
+
+
+    // This is probably wrong because flux_derivs_ is a vector and
+    // cumulative_sensitivities_ is a vector of vectors...
+    // these need to resized to be of size energy_bins or multipole_bins
+    p->cumulative_sensitivities_.resize(model::tally_sens.size(), {0.0});
+    for (int idx=0; idx< model::tally_sens.size();idx++){
+      p->cumulative_sensitivities_[idx].resize(model::tally_sens[idx].n_bins_,0.0);
+    }
+    for (auto it = p->cumulative_sensitivities_.begin(); it != p->cumulative_sensitivities_.end(); it++){
+      std::fill(it->begin(), it->end(), 0.0);
+    } // might be a more elegent way, but this is what i'm going with for now
   }
 
   // Allocate space for tally filter matches

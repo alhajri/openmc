@@ -15,6 +15,7 @@
 #include "openmc/simulation.h"
 #include "openmc/source.h"
 #include "openmc/tallies/derivative.h"
+#include "openmc/tallies/sensitivity.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/filter_cell.h"
 #include "openmc/tallies/filter_cellfrom.h"
@@ -416,6 +417,7 @@ Tally::Tally(pugi::xml_node node)
       }
     }
   }
+
 
   // If settings.xml trigger is turned on, create tally triggers
   if (settings::trigger_on) {
@@ -874,6 +876,9 @@ void read_tallies_xml()
   // Read data for tally derivatives
   read_tally_derivatives(root);
 
+  // Read data for tally sensitivities
+  read_tally_sensitivities(root);
+
   // ==========================================================================
   // READ FILTER DATA
 
@@ -894,6 +899,10 @@ void read_tallies_xml()
 
   for (auto node_tal : root.children("tally")) {
     model::tallies.push_back(std::make_unique<Tally>(node_tal));
+  }
+
+  for (auto node_tal : root.children("sensitivity_tally")) {
+    model::tallies.push_back(std::make_unique<SensitivityTally>(node_tal)); // Will this work?
   }
 }
 
@@ -1043,6 +1052,9 @@ free_memory_tally()
 {
   model::tally_derivs.clear();
   model::tally_deriv_map.clear();
+
+  model::tally_sens.clear();
+  model::tally_sens_map.clear();
 
   model::tally_filters.clear();
   model::filter_map.clear();

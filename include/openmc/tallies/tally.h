@@ -27,7 +27,7 @@ public:
   // Constructors, destructors, factory functions
   explicit Tally(int32_t id);
   explicit Tally(pugi::xml_node node);
-  ~Tally();
+  virtual ~Tally();
   static Tally* create(int32_t id = -1);
 
   //----------------------------------------------------------------------------
@@ -51,7 +51,7 @@ public:
 
   int32_t filters(int i) const {return filters_[i];}
 
-  void set_filters(gsl::span<Filter*> filters);
+  virtual void set_filters(gsl::span<Filter*> filters);
 
   int32_t strides(int i) const {return strides_[i];}
 
@@ -62,15 +62,15 @@ public:
   //----------------------------------------------------------------------------
   // Other methods.
 
-  void add_filter(Filter* filter) { set_filters({&filter, 1}); }
+  virtual void add_filter(Filter* filter) { set_filters({&filter, 1}); }
 
   void init_triggers(pugi::xml_node node);
 
-  void init_results();
+  virtual void init_results();
 
   void reset();
 
-  void accumulate();
+  virtual void accumulate();
 
   //! A string representing the i-th score on this tally
   std::string score_name(int score_idx) const;
@@ -125,7 +125,7 @@ public:
 
   int deriv_ {C_NONE}; //!< Index of a TallyDerivative object for diff tallies.
 
-private:
+protected:
   //----------------------------------------------------------------------------
   // Private data.
 

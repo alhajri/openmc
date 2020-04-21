@@ -311,6 +311,13 @@ enum class TallyResult {
   SUM_SQ
 };
 
+enum class SensitivityTallyResult {
+  VALUE,
+  SUM,
+  SUM_SQ,
+  PREVIOUS_VALUE
+};
+
 enum class TallyType {
   VOLUME,
   MESH_SURFACE,

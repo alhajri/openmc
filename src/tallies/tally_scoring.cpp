@@ -14,6 +14,7 @@
 #include "openmc/simulation.h"
 #include "openmc/string_utils.h"
 #include "openmc/tallies/derivative.h"
+#include "openmc/tallies/sensitivity.h"
 #include "openmc/tallies/filter.h"
 #include "openmc/tallies/filter_delayedgroup.h"
 #include "openmc/tallies/filter_energy.h"
@@ -1302,6 +1303,11 @@ score_general_ce(Particle* p, int i_tally, int start_index, int filter_index,
       apply_derivative_to_score(p, i_tally, i_nuclide, atom_density, score_bin,
         score);
 
+    // Add sensitivity information on score for differential tallies.
+    if (tally.sens_ != C_NONE)
+      apply_sensitivity_to_score(p, i_tally, i_nuclide, atom_density, score_bin,
+        score);
+
     // Update tally results
     #pragma omp atomic
     tally.results_(filter_index, score_index, TallyResult::VALUE) += score*filter_weight;
@@ -2197,6 +2203,9 @@ void score_collision_tally(Particle* p)
 
   for (auto i_tally : model::active_collision_tallies) {
     const Tally& tally {*model::tallies[i_tally]};
+
+    // Add a check to see if tally is a sensitivity tally, if so use special function
+    // check if sens_ != C_NONE
 
     // Initialize an iterator over valid filter bin combinations.  If there are
     // no valid combinations, use a continue statement to ensure we skip the
