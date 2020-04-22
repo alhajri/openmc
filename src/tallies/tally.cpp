@@ -245,6 +245,10 @@ score_str_to_int(std::string score_str)
 //==============================================================================
 // Tally object implementation
 //==============================================================================
+Tally::Tally()
+{
+  // Empty constructor that does nothing
+}
 
 Tally::Tally(int32_t id)
 {

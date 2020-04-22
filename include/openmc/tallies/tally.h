@@ -27,6 +27,7 @@ class Tally {
 public:
   //----------------------------------------------------------------------------
   // Constructors, destructors, factory functions
+  Tally(); //<-Empty constructor
   explicit Tally(int32_t id);
   explicit Tally(pugi::xml_node node);
   virtual ~Tally();
