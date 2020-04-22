@@ -2263,7 +2263,7 @@ void score_collision_tally(Particle* p)
 void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index, int filter_index,
   double filter_weight, int i_nuclide, double atom_density, double flux)
 {
-  Tally& tally {*model::tallies[i_tally]};
+  SensitivityTally& tally {*model::tallies[i_tally]};
 
   // Get the pre-collision energy of the particle.
   auto E = p->E_last_;
@@ -2319,7 +2319,7 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
 
     // Add sensitivity information on score for differential tallies.
     // Retrieve particle's cumulative sensitivity
-    const Tally& tally {*model::tallies[i_tally]};
+    //const Tally& tally {*model::tallies[i_tally]};
 
     if (score == 0.0) return;
 
