@@ -398,11 +398,6 @@ score_track_sensitivity(Particle* p, double distance)
 
       // Get the pre-collision energy of the particle.
       auto E = p->E_last_;
-  
-      // Bin the energy.
-      if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
-        auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
-      }
 
       double atom_density = 0.;
           if (sens.sens_nuclide >= 0) {
@@ -448,8 +443,12 @@ score_track_sensitivity(Particle* p, double distance)
         
         break;
       }
-
-      cumulative_sensitivities[bin] -= distance * macro_xs;
+  
+      // Bin the energy.
+      if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
+        auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
+        cumulative_sensitivities[bin] -= distance * macro_xs;
+      }
       break;
 
     case SensitivityVariable::MULTIPOLE:
@@ -504,11 +503,6 @@ void score_collision_sensitivity(Particle* p)
 
       // Get the pre-collision energy of the particle.
       auto E = p->E_last_;
-  
-      // Bin the energy.
-      if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
-        auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
-      }
       
       // Get the correct cross section
       double score;
@@ -527,7 +521,12 @@ void score_collision_sensitivity(Particle* p)
         break;
       }
 
-      cumulative_sensitivities[bin] += score;
+  
+      // Bin the energy.
+      if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
+        auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
+        cumulative_sensitivities[bin] += score;
+      }
 
       break;
 
