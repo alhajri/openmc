@@ -182,7 +182,7 @@ SensitivityTally::~SensitivityTally()
 SensitivityTally*
 SensitivityTally::create(int32_t id)
 {
-  model::tallies.push_back(std::make_unique<SensitivityTally>(id));
+  model::tallies.push_back(std::make_unique<Tally>(id));
   return model::tallies.back().get();
 }
 
