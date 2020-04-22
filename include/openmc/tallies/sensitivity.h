@@ -29,7 +29,7 @@ public:
   SensitivityTally(int32_t id);
   SensitivityTally(pugi::xml_node node);
   virtual ~SensitivityTally();
-  static SensitivityTally* create(int32_t id = -1);
+  //static SensitivityTally* create(int32_t id = -1);
 
   //----------------------------------------------------------------------------
   // Accessors

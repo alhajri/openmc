@@ -179,12 +179,12 @@ SensitivityTally::~SensitivityTally()
   model::tally_map.erase(id_);
 }
 
-SensitivityTally*
-SensitivityTally::create(int32_t id)
-{
-  model::tallies.push_back(std::make_unique<SensitivityTally>(id));
-  return model::tallies.back().get();
-}
+//SensitivityTally*
+//SensitivityTally::create(int32_t id)
+//{
+//  model::tallies.push_back(std::make_unique<SensitivityTally>(id));
+//  return model::tallies.back().get();
+//}
 
 void
 SensitivityTally::set_filters(gsl::span<Filter*> filters)
