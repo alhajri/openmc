@@ -125,6 +125,8 @@ public:
 
   int deriv_ {C_NONE}; //!< Index of a TallyDerivative object for diff tallies.
 
+  int sens_ {C_NONE}; //!< Index of a Sensitivity object for sensitivity tallies.
+
 protected:
   //----------------------------------------------------------------------------
   // Private data.

@@ -635,7 +635,7 @@ write_tallies()
       switch (sens.variable) {
       case SensitivityVariable::CROSS_SECTION:
         fmt::print(tallies_out, " Cross section sensitivity Material {} Nuclide {} Reaction {}\n",
-          sens.sens_material, data::nuclides[sens.sens_nuclide]->name_, reaction___);
+          sens.sens_material, data::nuclides[sens.sens_nuclide]->name_, sens.sens_reaction);
         break;
       case SensitivityVariable::MULTIPOLE:
         fmt::print(tallies_out, " Multipole sensitivity Material {} Nuclide {}\n",
