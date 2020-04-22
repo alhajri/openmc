@@ -305,6 +305,7 @@ list(APPEND libopenmc_SOURCES
   src/tallies/filter_zernike.cpp
   src/tallies/tally.cpp
   src/tallies/tally_scoring.cpp
+  src/tallies/sensitivity.cpp
   src/tallies/trigger.cpp
   src/timer.cpp
   src/thermal.cpp
