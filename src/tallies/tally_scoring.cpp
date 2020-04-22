@@ -2344,8 +2344,8 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
       // Bin the energy.
       if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
         auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
-        //#pragma omp atomic
-        //tally.results_(bin, score_index, SensitivityTallyResult::PREVIOUS_VALUE) += score*filter_weight;
+        #pragma omp atomic
+        tally.results_(bin, score_index, SensitivityTallyResult::PREVIOUS_VALUE) += score*filter_weight;
       }
     }
   }

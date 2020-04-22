@@ -4,10 +4,12 @@
 #include "openmc/material.h"
 #include "openmc/nuclide.h"
 #include "openmc/settings.h"
+#include "openmc/source.h"
 #include "openmc/search.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/xml_interface.h"
 #include "openmc/message_passing.h"
+#include "openmc/tallies/filter_importance.h"
 
 #include <fmt/core.h>
 #include "xtensor/xadapt.hpp"
@@ -352,7 +354,7 @@ TallySensitivity::set_bins(gsl::span<const double> bins)
     energy_bins_.push_back(bins[i]);
   }
 
-  n_bins_ = bins_.size() - 1;
+  n_bins_ = energy_bins_.size() - 1;
 }
 
 //==============================================================================
@@ -398,6 +400,7 @@ score_track_sensitivity(Particle* p, double distance)
     switch (sens.variable) {
 
     case SensitivityVariable::CROSS_SECTION:
+    {
       // Calculate the sensitivity with respect to the cross section
       // at this energy
 
@@ -454,7 +457,9 @@ score_track_sensitivity(Particle* p, double distance)
         auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
         cumulative_sensitivities[bin] -= distance * macro_xs;
       }
-      break;
+
+    }
+    break;
 
     case SensitivityVariable::MULTIPOLE:
       //for (auto i = 0; i < material.nuclide_.size(); ++i) {
@@ -494,6 +499,7 @@ void score_collision_sensitivity(Particle* p)
     switch (sens.variable) {
 
     case SensitivityVariable::CROSS_SECTION:
+    {
       if (p->event_nuclide_ != sens.sens_nuclide) continue;
       // Find the index in this material for the diff_nuclide.
       int i;
@@ -507,7 +513,7 @@ void score_collision_sensitivity(Particle* p)
       }
 
       // Get the pre-collision energy of the particle.
-      auto E = p->E_last_;
+      double E = p->E_last_;
       
       // Get the correct cross section
       double score;
@@ -532,7 +538,7 @@ void score_collision_sensitivity(Particle* p)
         auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
         cumulative_sensitivities[bin] += score;
       }
-
+    }
       break;
 
     case SensitivityVariable::MULTIPOLE:
