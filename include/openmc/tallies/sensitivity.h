@@ -26,8 +26,8 @@ class SensitivityTally : public Tally
 public:
   //----------------------------------------------------------------------------
   // Constructors, destructors, factory functions
-  explicit SensitivityTally(int32_t id);
-  explicit SensitivityTally(pugi::xml_node node);
+  SensitivityTally(int32_t id);
+  SensitivityTally(pugi::xml_node node);
   virtual ~SensitivityTally();
   static SensitivityTally* create(int32_t id = -1);
 

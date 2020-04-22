@@ -109,7 +109,7 @@ SensitivityTally::SensitivityTally(pugi::xml_node node)
 
   scores_.clear();
   depletion_rx_ = false;
-  scores_.reserve(scores.size());
+  scores_.reserve(1);
 
   auto score = SCORE_NU_FISSION;
 
