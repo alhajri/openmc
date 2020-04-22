@@ -2,6 +2,8 @@
 #define OPENMC_TALLIES_SENSITIVITY_H
 
 #include "openmc/particle.h"
+#include "openmc/tallies/filter.h"
+#include "openmc/tallies/tally.h"
 
 #include <unordered_map>
 #include <vector>
