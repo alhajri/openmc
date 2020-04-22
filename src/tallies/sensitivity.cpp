@@ -4,10 +4,15 @@
 #include "openmc/material.h"
 #include "openmc/nuclide.h"
 #include "openmc/settings.h"
+#include "openmc/search.h"
 #include "openmc/tallies/tally.h"
 #include "openmc/xml_interface.h"
+#include "openmc/message_passing.h"
 
 #include <fmt/core.h>
+#include "xtensor/xadapt.hpp"
+#include "xtensor/xbuilder.hpp" // for empty_like
+#include "xtensor/xview.hpp"
 
 template class std::vector<openmc::TallySensitivity>;
 
@@ -245,18 +250,18 @@ void SensitivityTally::accumulate()
     // Accumulate each result
     for (int i = 0; i < results_.shape()[0]; ++i) {
       for (int j = 0; j < results_.shape()[1]; ++j) {
-        double val = results_(i, j, SensitivityTally::PREVIOUS_VALUE) * norm;
-        results_(i, j, SensitivityTally::SUM) += val;
-        results_(i, j, SensitivityTally::SUM_SQ) += val*val;
+        double val = results_(i, j, SensitivityTallyResult::PREVIOUS_VALUE) * norm;
+        results_(i, j, SensitivityTallyResult::SUM) += val;
+        results_(i, j, SensitivityTallyResult::SUM_SQ) += val*val;
       }
     }
 
     // Move current value to previous value and zero out each result
     for (int i = 0; i < results_.shape()[0]; ++i) {
       for (int j = 0; j < results_.shape()[1]; ++j) {
-        double val = results_(i, j, SensitivityTally::VALUE);
-        results_(i, j, SensitivityTally::VALUE) = 0.0;
-        results_(i, j, SensitivityTally::PREVIOUS_VALUE) = val;
+        double val = results_(i, j, SensitivityTallyResult::VALUE);
+        results_(i, j, SensitivityTallyResult::VALUE) = 0.0;
+        results_(i, j, SensitivityTallyResult::PREVIOUS_VALUE) = val;
       }
     }
   }
