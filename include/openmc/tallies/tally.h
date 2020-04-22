@@ -17,6 +17,8 @@
 
 namespace openmc {
 
+int score_str_to_int(std::string score_str);
+
 //==============================================================================
 //! A user-specified flux-weighted (or current) measurement.
 //==============================================================================
