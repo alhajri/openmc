@@ -15,6 +15,7 @@ class _Bank(Structure):
     _fields_ = [('r', c_double*3),
                 ('u', c_double*3),
                 ('E', c_double),
+                ('E_parent', c_double),
                 ('wgt', c_double),
                 ('delayed_group', c_int),
                 ('particle', c_int),
