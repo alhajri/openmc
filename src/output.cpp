@@ -77,7 +77,7 @@ void title()
     "                   | The OpenMC Monte Carlo Code\n"
     "         Copyright | 2011-2020 MIT and OpenMC contributors\n"
     "           License | http://openmc.readthedocs.io/en/latest/license.html\n"
-    "           Version | {}.{}.{}{}\n", VERSION_MAJOR, VERSION_MINOR,
+    "           Version | {}.{}.{}{} - abdulla\n", VERSION_MAJOR, VERSION_MINOR,
     VERSION_RELEASE, VERSION_DEV ? "-dev" : "");
 #ifdef GIT_SHA1
   fmt::print("          Git SHA1 | {}\n", GIT_SHA1);
