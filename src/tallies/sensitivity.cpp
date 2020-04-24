@@ -336,7 +336,6 @@ TallySensitivity::TallySensitivity(pugi::xml_node node)
       variable_str, id));
   }
 
-  sens_material = std::stoi(get_node_value(node, "material"));
 }
 
 void
@@ -395,7 +394,6 @@ score_track_sensitivity(Particle* p, double distance)
   for (auto idx = 0; idx < model::tally_sens.size(); idx++) {
     const auto& sens = model::tally_sens[idx];
     auto& cumulative_sensitivities = p->cumulative_sensitivities_[idx];
-    if (sens.sens_material != material.id_) continue;
 
     switch (sens.variable) {
 
@@ -493,8 +491,6 @@ void score_collision_sensitivity(Particle* p)
   for (auto idx = 0; idx < model::tally_sens.size(); idx++) {
     const auto& sens = model::tally_sens[idx];
     auto& cumulative_sensitivities = p->cumulative_sensitivities_[idx];
-
-    if (sens.sens_material != material.id_) continue;
 
     switch (sens.variable) {
 

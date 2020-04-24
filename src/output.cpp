@@ -634,12 +634,12 @@ write_tallies()
       const auto& sens {model::tally_sens[tally.sens_]};
       switch (sens.variable) {
       case SensitivityVariable::CROSS_SECTION:
-        fmt::print(tallies_out, " Cross section sensitivity Material {} Nuclide {} Reaction {}\n",
-          sens.sens_material, data::nuclides[sens.sens_nuclide]->name_, sens.sens_reaction);
+        fmt::print(tallies_out, " Cross section sensitivity Nuclide {} Reaction {}\n",
+          data::nuclides[sens.sens_nuclide]->name_, sens.sens_reaction);
         break;
       case SensitivityVariable::MULTIPOLE:
-        fmt::print(tallies_out, " Multipole sensitivity Material {} Nuclide {}\n",
-          sens.sens_material, data::nuclides[sens.sens_nuclide]->name_);
+        fmt::print(tallies_out, " Multipole sensitivity Nuclide {}\n",
+          data::nuclides[sens.sens_nuclide]->name_);
         break;
       default:
         fatal_error(fmt::format("Sensitivity tally dependent variable for "

@@ -60,7 +60,6 @@ struct TallySensitivity {
 
   SensitivityVariable variable;  //!< Independent variable (like xs)
   int id;  //!< User-defined identifier
-  int sens_material;  //!< Material this sensitivity is applied to
   int sens_nuclide;  //!< Nuclide this material is applied to
   int sens_reaction;    //!< Need something to specify reaction, use ReactionType?
   std::vector<double> energy_bins_; //!< Energy bins on which to discretize the cross section
