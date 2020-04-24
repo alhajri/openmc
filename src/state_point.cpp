@@ -157,7 +157,7 @@ openmc_statepoint_write(const char* filename, bool* write_source)
         }
         close_group(sens_group);
       }
-      close_group(sens_group);
+      close_group(senss_group);
     }
 
     // Write information for filters
