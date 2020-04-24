@@ -137,9 +137,9 @@ openmc_statepoint_write(const char* filename, bool* write_source)
 
     // Write information for sensitivities
     if (!model::tally_sens.empty()) {
-      hid_t sens_group = create_group(tallies_group, "sensitivities");
+      hid_t senss_group = create_group(tallies_group, "sensitivities");
       for (const auto& sens : model::tally_sens) {
-        hid_t sens_group = create_group(sens_group,
+        hid_t sens_group = create_group(senss_group,
           "sensitivity " + std::to_string(sens.id));
         write_dataset(sens_group, "material", sens.sens_material);
         if (sens.variable == SensitivityVariable::CROSS_SECTION) {
