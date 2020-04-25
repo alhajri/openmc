@@ -98,7 +98,6 @@ SensitivityTally::SensitivityTally(pugi::xml_node node)
   // By default, we tally just the total material rates.
   if (!check_for_node(node, "nuclides")) {
     nuclides_.push_back(-1);
-    return;
   }
 
   // =======================================================================
