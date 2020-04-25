@@ -2335,8 +2335,6 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
     #pragma omp atomic
     tally.denominator_ += score*filter_weight;
 
-    std::cout << "score*filter_weight: " << score*filter_weight << '\n';
-
     // Update tally results
     for (auto idx = 0; idx < cumulative_sensitivities.size(); idx++){
       #pragma omp atomic
