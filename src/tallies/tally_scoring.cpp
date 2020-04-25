@@ -2331,8 +2331,11 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
     const auto& sens {model::tally_sens[tally.sens_]};
     const auto cumulative_sensitivities = p->cumulative_sensitivities_[tally.sens_];
 
-    #pragma omp atomic
-    if (tally.sens_ != C_NONE){tally.denominator_ += score*filter_weight;}
+    
+    if (tally.sens_ != C_NONE){
+      #pragma omp atomic
+      tally.denominator_ += score*filter_weight;
+    }
 
     // Update tally results
     for (auto idx = 0; idx < cumulative_sensitivities.size(); idx++){
