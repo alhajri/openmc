@@ -3182,6 +3182,18 @@ class Tallies(cv.CheckedList):
         for d in derivs:
             root_element.append(d.to_xml_element())
 
+    def _create_sensitivity_subelements(self, root_element):
+        # Get a list of all derivatives referenced in a tally.
+        senss = []
+        for tally in self:
+            sens = tally.sensitivity
+            if sens is not None and sens not in senss:
+                senss.append(deriv)
+
+        # Add the derivatives to the XML tree.
+        for d in senss:
+            root_element.append(d.to_xml_element())
+
     def export_to_xml(self, path='tallies.xml'):
         """Create a tallies.xml file that can be used for a simulation.
 
@@ -3197,6 +3209,7 @@ class Tallies(cv.CheckedList):
         self._create_filter_subelements(root_element)
         self._create_tally_subelements(root_element)
         self._create_derivative_subelements(root_element)
+        self._create_sensitivity_subelements(root_element)
 
         # Clean the indentation in the file to be user-readable
         clean_indentation(root_element)
