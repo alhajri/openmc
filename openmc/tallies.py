@@ -3188,7 +3188,7 @@ class Tallies(cv.CheckedList):
         for tally in self:
             sens = tally.sensitivity
             if sens is not None and sens not in senss:
-                senss.append(deriv)
+                senss.append(sens)
 
         # Add the derivatives to the XML tree.
         for d in senss:
