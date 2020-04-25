@@ -132,8 +132,8 @@ SensitivityTally::SensitivityTally(pugi::xml_node node)
         "Could not find sensitivity {} specified on tally {}", sens_id, id_));
     }
 
-    //sens_ = it->second;
-    sens_ = it->first;
+    sens_ = it->second;
+    //sens_ = it->first;
 
     // Only analog or collision estimators are supported for sensitivity
     // tallies.
