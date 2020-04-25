@@ -246,6 +246,8 @@ void SensitivityTally::accumulate()
       total_source = 1.0;
     }
 
+    std::cout << denominator_ << '\n';
+
     // Account for number of source particles in normalization
     double norm = total_source / (settings::n_particles * settings::gen_per_batch);
 
@@ -257,6 +259,8 @@ void SensitivityTally::accumulate()
         results_(i, j, SensitivityTallyResult::SUM_SQ) += val*val;
       }
     }
+
+    denominator_ = 0.0; //<! zero out denom
 
     // Move current value to previous value and zero out each result
     for (int i = 0; i < results_.shape()[0]; ++i) {
