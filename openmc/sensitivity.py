@@ -44,7 +44,6 @@ class Sensitivity(EqualityMixin, IDManagerMixin):
         # Initialize Tally class attributes
         self.id = sensitivity_id
         self.variable = variable
-        self.material = material
         self.nuclide = nuclide
         self.reaction = reaction
         self.energy = np.asarray(energy)
@@ -93,9 +92,19 @@ class Sensitivity(EqualityMixin, IDManagerMixin):
 
         element = ET.Element("sensitivity")
         element.set("id", str(self.id))
-        element.set("variable", self.variable)
-        element.set("nuclide", self.nuclide)
+
+        subelement = ET.SubElement(element, 'nuclide')
+        subelement.text = self.nuclide
+
+        subelement = ET.SubElement(element, 'variable')
+        subelement.text = self.variable
+        
         if self.variable == 'cross_section':
-            element.set("energy", ' '.join(str(x) for x in self.energy))
+            subelement = ET.SubElement(element, 'reaction')
+            subelement.text = self.reaction
+
+            subelement = ET.SubElement(element, 'energy')
+            subelement.text = ' '.join(str(e) for e in self.energy)
+
 
         return element
