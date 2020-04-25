@@ -47,7 +47,7 @@ public:
   //----------------------------------------------------------------------------
   // Major public data members.
 
-  double denominator {0.0}; //!< Denominator of the sensitivity, <\phi F \psi>
+  double denominator_ {0.0}; //!< Denominator of the sensitivity, <\phi F \psi>
 
   int sens_ {C_NONE}; //!< Index of a Sensitivity object for sensitivity tallies.
 };
