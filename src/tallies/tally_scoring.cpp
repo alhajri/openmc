@@ -2263,7 +2263,7 @@ void score_collision_tally(Particle* p)
 void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index, int filter_index,
   double filter_weight, int i_nuclide, double atom_density, double flux)
 {
-  SensitivityTally& tally {*model::tallies[i_tally]};
+  Tally& tally {*model::tallies[i_tally]};
 
   // Get the pre-collision energy of the particle.
   auto E = p->E_last_;
@@ -2332,7 +2332,7 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
     const auto cumulative_sensitivities = p->cumulative_sensitivities_[tally.sens_];
 
     #pragma omp atomic
-    tally.denominator_ += score*filter_weight;
+    if (tally.sens_ != C_NONE){tally.denominator_ += score*filter_weight;}
 
     // Update tally results
     for (auto idx = 0; idx < cumulative_sensitivities.size(); idx++){
