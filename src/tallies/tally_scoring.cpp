@@ -2263,6 +2263,7 @@ void score_collision_tally(Particle* p)
 void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index, int filter_index,
   double filter_weight, int i_nuclide, double atom_density, double flux)
 {
+  Tally *ptr = {*model::tallies[i_tally]};
   Tally& tally {*model::tallies[i_tally]};
 
   // Get the pre-collision energy of the particle.
