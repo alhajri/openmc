@@ -2977,33 +2977,33 @@ class Tally(IDManagerMixin):
         return new_tally
 
 
-class SensitivityTally(Tally):
-
-    def __init__(self, tally_id=None, name=''):
-    # Initialize Tally class attributes
-    Tally.__init__(tally_id=tally_id, name = name)
-    self.id = tally_id
-    self.name = name
-    self._filters = cv.CheckedList(_FILTER_CLASSES, 'tally filters')
-    self._nuclides = cv.CheckedList(_NUCLIDE_CLASSES, 'tally nuclides')
-    self._scores = cv.CheckedList(_SCORE_CLASSES, 'tally scores')
-    self._estimator = None
-    self._triggers = cv.CheckedList(openmc.Trigger, 'tally triggers')
-    self._sensitivity = None
-
-    self._num_realizations = 0
-    self._with_summary = False
-
-    self._sum = None
-    self._sum_sq = None
-    self._mean = None
-    self._std_dev = None
-    self._with_batch_statistics = False
-    self._derived = False
-    self._sparse = False
-
-    self._sp_filename = None
-    self._results_read = False
+#class SensitivityTally(Tally):
+#
+#    def __init__(self, tally_id=None, name=''):
+#    # Initialize Tally class attributes
+#    Tally.__init__(tally_id=tally_id, name = name)
+#    self.id = tally_id
+#    self.name = name
+#    self._filters = cv.CheckedList(_FILTER_CLASSES, 'tally filters')
+#    self._nuclides = cv.CheckedList(_NUCLIDE_CLASSES, 'tally nuclides')
+#    self._scores = cv.CheckedList(_SCORE_CLASSES, 'tally scores')
+#    self._estimator = None
+#    self._triggers = cv.CheckedList(openmc.Trigger, 'tally triggers')
+#    self._sensitivity = None
+#
+#    self._num_realizations = 0
+#    self._with_summary = False
+#
+#    self._sum = None
+#    self._sum_sq = None
+#    self._mean = None
+#    self._std_dev = None
+#    self._with_batch_statistics = False
+#    self._derived = False
+#    self._sparse = False
+#
+#    self._sp_filename = None
+#    self._results_read = False
 
 class Tallies(cv.CheckedList):
     """Collection of Tallies used for an OpenMC simulation.
