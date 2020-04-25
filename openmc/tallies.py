@@ -3036,7 +3036,6 @@ class SensitivityTally(Tally):
             trigger.get_trigger_xml(element)
 
         # Optional derivatives
-        if self.sensitivity is not None:
         subelement = ET.SubElement(element, "sensitivity")
         subelement.text = str(self.sensitivity.id)
 
