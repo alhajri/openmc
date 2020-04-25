@@ -2331,11 +2331,13 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
     const auto& sens {model::tally_sens[tally.sens_]};
     const auto cumulative_sensitivities = p->cumulative_sensitivities_[tally.sens_];
 
+    #pragma omp atomic
+    tally.denominator_ += score*filter_weight;
 
     // Update tally results
     for (auto idx = 0; idx < cumulative_sensitivities.size(); idx++){
       #pragma omp atomic
-      tally.results_(idx, score_index, TallyResult::VALUE) += cumulative_sensitivities[idx]*score*filter_weight;
+      tally.results_(idx, score_index, SensitivityTallyResult::VALUE) += cumulative_sensitivities[idx]*score*filter_weight;
     }
     if (sens.sens_reaction == SCORE_FISSION || sens.sens_reaction == SCORE_TOTAL){
       // Get the energy of the parent particle.

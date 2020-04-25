@@ -1,4 +1,5 @@
 from numbers import Integral
+import numpy as np
 from xml.etree import ElementTree as ET
 
 import openmc.checkvalue as cv
@@ -52,7 +53,6 @@ class Sensitivity(EqualityMixin, IDManagerMixin):
         string = 'Sensitivity\n'
         string += '{: <16}=\t{}\n'.format('\tID', self.id)
         string += '{: <16}=\t{}\n'.format('\tVariable', self.variable)
-        string += '{: <16}=\t{}\n'.format('\tMaterial', self.material)
         string += '{: <16}=\t{}\n'.format('\tNuclide', self.nuclide)
         if self.variable == 'cross_section':
             string += '{: <16}=\t{}\n'.format('\tReaction', self.reaction)
@@ -62,10 +62,6 @@ class Sensitivity(EqualityMixin, IDManagerMixin):
     @property
     def variable(self):
         return self._variable
-
-    @property
-    def material(self):
-        return self._material
 
     @property
     def nuclide(self):
@@ -78,12 +74,6 @@ class Sensitivity(EqualityMixin, IDManagerMixin):
             cv.check_value('sensitivity variable', var,
                            ('cross_section', 'multipole'))
         self._variable = var
-
-    @material.setter
-    def material(self, mat):
-        if mat is not None:
-            cv.check_type('sensitivity material', mat, Integral)
-        self._material = mat
 
     @nuclide.setter
     def nuclide(self, nuc):
@@ -104,9 +94,8 @@ class Sensitivity(EqualityMixin, IDManagerMixin):
         element = ET.Element("sensitivity")
         element.set("id", str(self.id))
         element.set("variable", self.variable)
-        element.set("material", str(self.material))
         element.set("nuclide", self.nuclide)
         if self.variable == 'cross_section':
             element.set("energy", ' '.join(str(x) for x in self.energy))
-            
+
         return element
