@@ -3003,7 +3003,7 @@ class SensitivityTally(Tally):
 
     @sensitivity.setter
     def sensitivity(self, sens):
-        cv.check_type('sensitivity', deriv, openmc.Sensitivity,
+        cv.check_type('sensitivity', sens, openmc.Sensitivity,
                       none_ok=True)
         self._sensitivity = sens
 
