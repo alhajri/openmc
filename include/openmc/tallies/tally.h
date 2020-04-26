@@ -108,7 +108,7 @@ public:
   //! combination of filters (e.g. specific cell, specific energy group, etc.)
   //! and the second dimension of the array is for scores (e.g. flux, total
   //! reaction rate, fission reaction rate, etc.)
-  xt::xtensor<double, 3> results_;
+  xt::xtensor<double, 4> results_;
 
   //! True if this tally should be written to statepoint files
   bool writable_ {true};

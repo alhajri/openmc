@@ -47,6 +47,8 @@ public:
   //----------------------------------------------------------------------------
   // Major public data members.
 
+  //xt::xtensor<double, 4> results_;
+
   double denominator_ {0.0}; //!< Denominator of the sensitivity, <\phi F \psi>
 
   //int sens_ {C_NONE}; //!< Index of a Sensitivity object for sensitivity tallies.
