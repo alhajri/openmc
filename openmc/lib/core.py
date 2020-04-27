@@ -18,6 +18,7 @@ class _Bank(Structure):
                 ('E_parent', c_double),
                 ('wgt', c_double),
                 ('delayed_group', c_int),
+                ('fission_nuclide', c_int),
                 ('particle', c_int),
                 ('parent_id', c_int64),
                 ('progeny_id', c_int64)]
