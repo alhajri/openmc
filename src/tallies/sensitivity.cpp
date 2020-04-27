@@ -406,7 +406,7 @@ score_track_sensitivity(Particle* p, double distance)
       // at this energy
 
       // Get the pre-collision energy of the particle.
-      auto E = p->E_last_;
+      auto E = p->E_;
 
       double atom_density = 0.;
           if (sens.sens_nuclide >= 0) {
