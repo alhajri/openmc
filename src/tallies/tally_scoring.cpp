@@ -2341,14 +2341,16 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
       tally.results_(idx, score_index, SensitivityTallyResult::VALUE) += cumulative_sensitivities[idx]*score*filter_weight;
     }
     if (sens.sens_reaction == SCORE_FISSION ){
-      // Get the energy of the parent particle.
-      auto E = p->E_parent_;
-  
-      // Bin the energy.
-      if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
-        auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
-        #pragma omp atomic
-        tally.results_(bin, score_index, SensitivityTallyResult::PREVIOUS_VALUE) += score*filter_weight;
+      if (sens.sens_nuclide == p->fission_nuclide){
+        // Get the energy of the parent particle.
+        auto E = p->E_parent_;
+
+        // Bin the energy.
+        if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
+          auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
+          #pragma omp atomic
+          tally.results_(bin, score_index, SensitivityTallyResult::PREVIOUS_VALUE) += score*filter_weight;
+        }
       }
     }
   }

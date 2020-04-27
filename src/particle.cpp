@@ -128,6 +128,7 @@ Particle::from_source(const Bank* src)
   r_last_ = src->r;
   r_born_ = src->r;
   u_last_ = src->u;
+  fission_nuclide = src->fission_nuclide;
   if (settings::run_CE) {
     E_ = src->E;
     E_parent_ = src->E_parent;

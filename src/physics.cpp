@@ -188,6 +188,7 @@ create_fission_sites(Particle* p, int i_nuclide, const Reaction* rx)
     site.particle = Particle::Type::neutron;
     site.wgt = 1. / weight;
     site.E_parent = p->E_;
+    site.fission_nuclide = i_nuclide;
     site.parent_id = p->id_;
     site.progeny_id = p->n_progeny_++;
 

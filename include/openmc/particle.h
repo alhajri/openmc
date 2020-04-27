@@ -170,6 +170,7 @@ public:
     double E_parent;
     double wgt;
     int delayed_group;
+    int fission_nuclide;
     Type particle;
     int64_t parent_id;
     int64_t progeny_id;
@@ -279,6 +280,9 @@ public:
   double E_parent_; //!< energy of parent neutron in eV
   int g_ {0};      //!< post-collision energy group (MG only)
   int g_last_;     //!< pre-collision energy group (MG only)
+
+  // Other birth data
+  int fission_nuclide; //!< this particle was born as a result of this nuclide fissioning
 
   // Other physical data
   double wgt_ {1.0};     //!< particle weight
