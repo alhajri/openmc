@@ -2340,7 +2340,7 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
       #pragma omp atomic
       tally.results_(idx, score_index, SensitivityTallyResult::VALUE) += cumulative_sensitivities[idx]*score*filter_weight;
     }
-    if (sens.sens_reaction == SCORE_FISSION || sens.sens_reaction == SCORE_TOTAL){
+    if (sens.sens_reaction == SCORE_FISSION ){
       // Get the energy of the parent particle.
       auto E = p->E_parent_;
   
