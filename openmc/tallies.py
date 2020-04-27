@@ -3209,7 +3209,10 @@ class Tallies(cv.CheckedList):
         self._create_filter_subelements(root_element)
         self._create_tally_subelements(root_element)
         self._create_derivative_subelements(root_element)
-        self._create_sensitivity_subelements(root_element)
+        try:
+            self._create_sensitivity_subelements(root_element)
+        except:
+            pass
 
         # Clean the indentation in the file to be user-readable
         clean_indentation(root_element)
