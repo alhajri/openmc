@@ -227,7 +227,8 @@ void SensitivityTally::init_results()
 {
   int n_scores = 1;
   int n_filter_bins = model::tally_sens[sens_].n_bins_;
-  results_ = xt::empty<double>({n_filter_bins, n_scores, 4});
+  results_ = xt::empty<double>({n_filter_bins, n_scores, 3});
+  previous_results_ = xt::empty<double>({n_filter_bins, n_scores, 1});
 }
 
 void SensitivityTally::accumulate()
@@ -253,7 +254,7 @@ void SensitivityTally::accumulate()
     for (int i = 0; i < results_.shape()[0]; ++i) {
       for (int j = 0; j < results_.shape()[1]; ++j) {
         //double val = results_(i, j, SensitivityTallyResult::PREVIOUS_VALUE) * norm / denominator_;
-        double val = results_(i, j, SensitivityTallyResult::PREVIOUS_VALUE)/ denominator_;
+        double val = previous_results_(i, j, SensitivityTallyResult::VALUE)/ denominator_;
         results_(i, j, SensitivityTallyResult::SUM) += val;
         results_(i, j, SensitivityTallyResult::SUM_SQ) += val*val;
       }
@@ -266,7 +267,7 @@ void SensitivityTally::accumulate()
       for (int j = 0; j < results_.shape()[1]; ++j) {
         double val = results_(i, j, SensitivityTallyResult::VALUE);
         results_(i, j, SensitivityTallyResult::VALUE) = 0.0;
-        results_(i, j, SensitivityTallyResult::PREVIOUS_VALUE) = val;
+        previous_results_(i, j, SensitivityTallyResult::VALUE) = val;
       }
     }
   }
@@ -405,7 +406,7 @@ score_track_sensitivity(Particle* p, double distance)
       // Calculate the sensitivity with respect to the cross section
       // at this energy
 
-      // Get the pre-collision energy of the particle.
+      // Get the post-collision energy of the particle.
       auto E = p->E_;
 
       double atom_density = 0.;
