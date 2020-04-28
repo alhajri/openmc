@@ -51,6 +51,8 @@ public:
 
   double denominator_ {0.0}; //!< Denominator of the sensitivity, <\phi F \psi>
 
+  xt::xtensor<double, 3> previous_results_;
+
   //int sens_ {C_NONE}; //!< Index of a Sensitivity object for sensitivity tallies.
 };
 
