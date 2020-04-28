@@ -251,15 +251,14 @@ void SensitivityTally::accumulate()
     //double norm = total_source / (settings::n_particles * settings::gen_per_batch);
 
     // Accumulate each result
-    if (n_realizations>1){ // < first active cycle does not count
-        for (int i = 0; i < results_.shape()[0]; ++i) {
-          for (int j = 0; j < results_.shape()[1]; ++j) {
-            //double val = results_(i, j, SensitivityTallyResult::PREVIOUS_VALUE) * norm / denominator_;
-            double val = previous_results_(i, j, SensitivityTallyResult::VALUE)/ denominator_;
-            results_(i, j, SensitivityTallyResult::SUM) += val;
-            results_(i, j, SensitivityTallyResult::SUM_SQ) += val*val;
-          }
-        }
+    // TODO: ignore the first realization
+    for (int i = 0; i < results_.shape()[0]; ++i) {
+      for (int j = 0; j < results_.shape()[1]; ++j) {
+        //double val = results_(i, j, SensitivityTallyResult::PREVIOUS_VALUE) * norm / denominator_;
+        double val = previous_results_(i, j, SensitivityTallyResult::VALUE)/ denominator_;
+        results_(i, j, SensitivityTallyResult::SUM) += val;
+        results_(i, j, SensitivityTallyResult::SUM_SQ) += val*val;
+      }
     }
 
     denominator_ = 0.0; //<! zero out denom
