@@ -694,6 +694,17 @@ write_tallies()
           std::string score_name = score > 0 ? reaction_name(score)
             : score_names.at(score);
           double mean, stdev;
+          if (tally.sens_ != C_NONE){
+            int n_bins = tally_sens[sens_].n_bins_
+            for (auto filter_idx = 0; filter_idx < n_bins; ++filter_idx){
+              std::tie(mean, stdev) = mean_stdev(
+                &tally.results_(filter_idx, score_index, 0), tally.n_realizations_);
+              fmt::print(tallies_out, "{0:{1}}{2:<36} {3:.6} +/- {4:.6}\n",
+                "", indent + 1, score_name, mean, t_value * stdev);
+            }
+            score_index += 1;
+            continue;
+          }
           std::tie(mean, stdev) = mean_stdev(
             &tally.results_(filter_index, score_index, 0), tally.n_realizations_);
           fmt::print(tallies_out, "{0:{1}}{2:<36} {3:.6} +/- {4:.6}\n",
