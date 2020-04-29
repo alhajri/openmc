@@ -827,9 +827,6 @@ Direction sample_target_velocity(const Nuclide* nuc, double E, Direction u,
   case ResScatMethod::cxs:
 
     // sample target velocity with the constant cross section (cxs) approx.
-    if (kT == 0.0){
-      return 0.0;
-    }
     return sample_cxs_target_velocity(nuc->awr_, E, u, kT, seed);
 
   case ResScatMethod::dbrc:
