@@ -207,8 +207,11 @@ class Tally(IDManagerMixin):
             sum_sq = data[:, :, 1]
 
             # Reshape the results arrays
-            sum_ = np.reshape(sum_, self.shape)
-            sum_sq = np.reshape(sum_sq, self.shape)
+            shape = self.shape
+            if len(sum_[:,0]) != shape[0]:
+                shape[0] = len(sum_[:,0])
+            sum_ = np.reshape(sum_, shape)
+            sum_sq = np.reshape(sum_sq, shape)
 
             # Set the data for this Tally
             self._sum = sum_
