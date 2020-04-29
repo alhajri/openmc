@@ -71,7 +71,7 @@ public:
 
   virtual void init_results();
 
-  void reset();
+  virtual void reset();
 
   virtual void accumulate();
 

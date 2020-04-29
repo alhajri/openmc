@@ -231,6 +231,15 @@ void SensitivityTally::init_results()
   previous_results_ = xt::empty<double>({n_filter_bins, n_scores, 1});
 }
 
+void SensitivityTally::reset()
+{
+  n_realizations_ = 0;
+  if (results_.size() != 0) {
+    xt::view(results_, xt::all()) = 0.0;
+    xt::view(previous_results_, xt::all()) = 0.0;
+  }
+}
+
 void SensitivityTally::accumulate()
 {
   // Increment number of realizations

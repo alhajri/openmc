@@ -2998,6 +2998,11 @@ class SensitivityTally(Tally):
         return '\n\t'.join(parts)
 
     @property
+    def shape(self):
+        length = len(self._sensitivity.energy) - 1
+        return (length, self.num_nuclides, self.num_scores)
+
+    @property
     def sensitivity(self):
         return self._sensitivity
 
