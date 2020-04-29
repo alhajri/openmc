@@ -695,7 +695,7 @@ write_tallies()
             : score_names.at(score);
           double mean, stdev;
           if (tally.sens_ != C_NONE){
-            int n_bins = model::tally_sens[tally.sens_].n_bins_
+            int n_bins = model::tally_sens[tally.sens_].n_bins_;
             for (auto filter_idx = 0; filter_idx < n_bins; ++filter_idx){
               std::tie(mean, stdev) = mean_stdev(
                 &tally.results_(filter_idx, score_index, 0), tally.n_realizations_);
