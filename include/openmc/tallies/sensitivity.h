@@ -60,6 +60,7 @@ public:
 enum class SensitivityVariable {
   CROSS_SECTION,
   MULTIPOLE
+  // add a third for curvefit?
 };
 
 struct TallySensitivity {
@@ -70,6 +71,8 @@ struct TallySensitivity {
   int sens_reaction;    //!< Need something to specify reaction, use ReactionType?
   std::vector<double> energy_bins_; //!< Energy bins on which to discretize the cross section
   int n_bins_; //!< something to indicate the size of the vector
+  bool curvefit {false}; //!< whether or not to calculate the sensitivity to curvefit coefficients
+                         //! if false, just look at pole parameters, if true only look at curvefit coeffs
 
   TallySensitivity() {}
   explicit TallySensitivity(pugi::xml_node node);
@@ -98,13 +101,13 @@ void read_tally_sensitivities(pugi::xml_node node);
 //! further tallies are scored.
 //
 //! \param p The particle being tracked
-void score_collision_sensitivity(Particle* p);
+void score_collision_sensitivity(Particle& p);
 
 //! Adjust diff tally flux derivatives for a particle tracking event.
 //
 //! \param p The particle being tracked
 //! \param distance The distance in [cm] traveled by the particle
-void score_track_sensitivity(Particle* p, double distance);
+void score_track_sensitivity(Particle& p, double distance);
 
 } // namespace openmc
 

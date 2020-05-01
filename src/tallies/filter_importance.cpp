@@ -54,10 +54,10 @@ ImportanceFilter::set_importance(gsl::span<const double> importance)
 }
 
 void
-ImportanceFilter::get_all_bins(const Particle* p, TallyEstimator estimator, FilterMatch& match)
+ImportanceFilter::get_all_bins(const Particle& p, TallyEstimator estimator, FilterMatch& match)
 const
 {
-  auto bin = model::meshes[mesh_]->get_bin(p->r());
+  auto bin = model::meshes[mesh_]->get_bin(p.r());
   if (bin >= 0) {
     match.bins_.push_back(0); // There is only one bin, (is it 0-indexed?)
     match.weights_.push_back(importance_[bin]); // the weight is the importance in the mesh bin

@@ -96,7 +96,7 @@ void score_tracklength_tally(Particle& p, double distance);
 void score_surface_tally(Particle& p, const std::vector<int>& tallies);
 
 //! Function to handle the special case when the tally is a sensitivity tally.
-void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index, int filter_index,
+void score_collision_sensitivity_tally(Particle& p, int i_tally, int start_index, int filter_index,
   double filter_weight, int i_nuclide, double atom_density, double flux);
 
 } // namespace openmc

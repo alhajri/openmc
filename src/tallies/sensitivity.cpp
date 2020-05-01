@@ -301,21 +301,21 @@ TallySensitivity::TallySensitivity(pugi::xml_node node)
 
   std::string variable_str = get_node_value(node, "variable");
 
+  std::string nuclide_name = get_node_value(node, "nuclide");
+  bool found = false;
+  for (auto i = 0; i < data::nuclides.size(); ++i) {
+    if (data::nuclides[i]->name_ == nuclide_name) {
+      found = true;
+      sens_nuclide = i;
+    }
+  }
+  if (!found) {
+    fatal_error(fmt::format("Could not find the nuclide \"{}\" specified in "
+      "derivative {} in any material.", nuclide_name, id));
+  }
+
   if (variable_str == "cross_section") {
     variable = SensitivityVariable::CROSS_SECTION;
-
-    std::string nuclide_name = get_node_value(node, "nuclide");
-    bool found = false;
-    for (auto i = 0; i < data::nuclides.size(); ++i) {
-      if (data::nuclides[i]->name_ == nuclide_name) {
-        found = true;
-        sens_nuclide = i;
-      }
-    }
-    if (!found) {
-      fatal_error(fmt::format("Could not find the nuclide \"{}\" specified in "
-        "derivative {} in any material.", nuclide_name, id));
-    }
 
     // ADD LOGIC TO LOOK FOR ENERGY BINS OTHERWISE DEFAULT TO MAX AND MIN NEUTRON ENERGY
     auto bins = get_node_array<double>(node, "energy");
@@ -328,22 +328,12 @@ TallySensitivity::TallySensitivity(pugi::xml_node node)
   } else if (variable_str == "multipole") {
     variable = SensitivityVariable::MULTIPOLE;
 
-    std::string nuclide_name = get_node_value(node, "nuclide");
-    bool found = false;
-    for (auto i = 0; i < data::nuclides.size(); ++i) {
-      if (data::nuclides[i]->name_ == nuclide_name) {
-        found = true;
-        sens_nuclide = i;
-      }
-    }
-    if (!found) {
-      fatal_error(fmt::format("Could not find the nuclide \"{}\" specified in "
-        "derivative {} in any material.", nuclide_name, id));
-    }
+    // check if curvefit sensitivities were asked for, maybe move to a different variable
 
     // ADD LOGIC TO SET THE BINS TO SIZE OF MULTIPOLE PARAMETERS
-
-    // ADD LOGIC TO SET SCORE TO SCORE_TOTAL
+    // set n_bins_ 
+    auto nuc = data::nuclides[sens_nuclide];
+    n_bins_ = nuc.multipole_.data_.shape()[0] * nuc.multipole_.data_.shape()[1] * 2;
 
   }  else {
     fatal_error(fmt::format("Unrecognized variable \"{}\" on derivative {}",
@@ -399,15 +389,22 @@ read_tally_sensitivities(pugi::xml_node node)
 }
 
 void
-score_track_sensitivity(Particle* p, double distance)
+score_track_sensitivity(Particle& p, double distance)
 {
   // A void material cannot be perturbed so it will not affect flux sensitivities.
-  if (p->material_ == MATERIAL_VOID) return;
-  const Material& material {*model::materials[p->material_]};
+  if (p.material_ == MATERIAL_VOID) return;
+  const Material& material {*model::materials[p.material_]};
 
   for (auto idx = 0; idx < model::tally_sens.size(); idx++) {
     const auto& sens = model::tally_sens[idx];
-    auto& cumulative_sensitivities = p->cumulative_sensitivities_[idx];
+    auto& cumulative_sensitivities = p.cumulative_sensitivities_[idx];
+
+    double atom_density = 0.;
+        if (sens.sens_nuclide >= 0) {
+          auto j = model::materials[p.material_]->mat_nuclide_index_[sens.sens_nuclide];
+          if (j == C_NONE) continue;
+          atom_density = model::materials[p.material_]->atom_density_(j);
+        }
 
     switch (sens.variable) {
 
@@ -417,14 +414,7 @@ score_track_sensitivity(Particle* p, double distance)
       // at this energy
 
       // Get the post-collision energy of the particle.
-      auto E = p->E_;
-
-      double atom_density = 0.;
-          if (sens.sens_nuclide >= 0) {
-            auto j = model::materials[p->material_]->mat_nuclide_index_[sens.sens_nuclide];
-            if (j == C_NONE) continue;
-            atom_density = model::materials[p->material_]->atom_density_(j);
-          }
+      auto E = p.E_;
 
 
       // Get the correct cross section
@@ -432,33 +422,33 @@ score_track_sensitivity(Particle* p, double distance)
       switch (sens.sens_reaction) {
       case SCORE_TOTAL:
         if (sens.sens_nuclide >=0){
-            macro_xs = p->neutron_xs_[sens.sens_nuclide].total * atom_density;
+            macro_xs = p.neutron_xs_[sens.sens_nuclide].total * atom_density;
         } else {
-            macro_xs = p->macro_xs_.total;
+            macro_xs = p.macro_xs_.total;
         }
         break;
       case SCORE_SCATTER:
         if (sens.sens_nuclide >=0){
-            macro_xs = (p->neutron_xs_[sens.sens_nuclide].total 
-            - p->neutron_xs_[sens.sens_nuclide].absorption) * atom_density;
+            macro_xs = (p.neutron_xs_[sens.sens_nuclide].total 
+            - p.neutron_xs_[sens.sens_nuclide].absorption) * atom_density;
         } else {
-            macro_xs = p->macro_xs_.total - p->macro_xs_.absorption;
+            macro_xs = p.macro_xs_.total - p.macro_xs_.absorption;
         }
         break;
       case SCORE_ABSORPTION: 
         if (sens.sens_nuclide >=0){
-            macro_xs = p->neutron_xs_[sens.sens_nuclide].absorption * atom_density;
+            macro_xs = p.neutron_xs_[sens.sens_nuclide].absorption * atom_density;
         } else {
-            macro_xs = p->macro_xs_.absorption;
+            macro_xs = p.macro_xs_.absorption;
         }
         break;
       case SCORE_FISSION:
-        if (p->macro_xs_.absorption == 0) continue;
+        if (p.macro_xs_.absorption == 0) continue;
 
         if (sens.sens_nuclide >= 0) {
-          macro_xs = p->neutron_xs_[sens.sens_nuclide].fission * atom_density;
+          macro_xs = p.neutron_xs_[sens.sens_nuclide].fission * atom_density;
         } else {
-          macro_xs = p->macro_xs_.fission;
+          macro_xs = p.macro_xs_.fission;
         }
         
         break;
@@ -487,43 +477,51 @@ score_track_sensitivity(Particle* p, double distance)
       //      * material.atom_density_(i);
       //  }
       //}
+
+      // check if in resonance range
+
+      // the score is atom_density * derivative_total * distance
+
+      // bin
+
       break;
     }
   }
 }
 
-void score_collision_sensitivity(Particle* p)
+void score_collision_sensitivity(Particle& p)
 {
   // A void material cannot be perturbed so it will not affect flux derivatives.
-  if (p->material_ == MATERIAL_VOID) return;
+  if (p.material_ == MATERIAL_VOID) return;
 
   // only scattering events effect the cumulative tallies
-  if (p->event_ != TallyEvent::SCATTER) return;
+  if (p.event_ != TallyEvent::SCATTER) return;
 
-  const Material& material {*model::materials[p->material_]};
+  const Material& material {*model::materials[p.material_]};
 
   for (auto idx = 0; idx < model::tally_sens.size(); idx++) {
     const auto& sens = model::tally_sens[idx];
-    auto& cumulative_sensitivities = p->cumulative_sensitivities_[idx];
+    auto& cumulative_sensitivities = p.cumulative_sensitivities_[idx];
+
+    if (p.event_nuclide_ != sens.sens_nuclide) continue;
+    // Find the index in this material for the diff_nuclide.
+    int i;
+    for (i = 0; i < material.nuclide_.size(); ++i)
+      if (material.nuclide_[i] == sens.sens_nuclide) break;
+    // Make sure we found the nuclide.
+    if (material.nuclide_[i] != sens.sens_nuclide) {
+      fatal_error(fmt::format(
+        "Could not find nuclide {} in material {} for tally sensitivity {}",
+        data::nuclides[sens.sens_nuclide]->name_, material.id_, sens.id));
+    }
 
     switch (sens.variable) {
 
     case SensitivityVariable::CROSS_SECTION:
     {
-      if (p->event_nuclide_ != sens.sens_nuclide) continue;
-      // Find the index in this material for the diff_nuclide.
-      int i;
-      for (i = 0; i < material.nuclide_.size(); ++i)
-        if (material.nuclide_[i] == sens.sens_nuclide) break;
-      // Make sure we found the nuclide.
-      if (material.nuclide_[i] != sens.sens_nuclide) {
-        fatal_error(fmt::format(
-          "Could not find nuclide {} in material {} for tally sensitivity {}",
-          data::nuclides[sens.sens_nuclide]->name_, material.id_, sens.id));
-      }
 
       // Get the pre-collision energy of the particle.
-      double E = p->E_last_;
+      double E = p.E_last_;
       
       // Get the correct cross section
       double score;
@@ -573,6 +571,14 @@ void score_collision_sensitivity(Particle* p)
       //    // eigenvalue derivatives).
       //  }
       //}
+
+      // check if in resonance range
+
+      // Calculate derivative of the scattering cross section at p->E_last_
+      // start_idx = i_pole*2*shape()[1]
+
+      // sum/bin 1/micro_sigma_scatter * derivative
+
       break;
     }
   }

@@ -122,6 +122,7 @@ class StatePoint:
         self._filters = {}
         self._tallies = {}
         self._derivs = {}
+        self._sens = {}
 
         # Check filetype and version
         cv.check_filetype_version(self._f, 'statepoint', _VERSION_STATEPOINT)
@@ -134,6 +135,7 @@ class StatePoint:
         self._global_tallies = None
         self._sparse = False
         self._derivs_read = False
+        self._sens_read = False
 
         # Automatically link in a summary file if one exists
         if autolink:
@@ -396,6 +398,10 @@ class StatePoint:
                         deriv_id = group['derivative'][()]
                         tally.derivative = self.tally_derivatives[deriv_id]
 
+                    if 'sensitivity' in group:
+                        sens_id = group['sensitivity'][()]
+                        tally.sensitivity = self.tally_sensitivity[sens_id]
+
                     # Read all filters
                     n_filters = group['n_filters'][()]
                     if n_filters > 0:
@@ -460,6 +466,35 @@ class StatePoint:
             self._derivs_read = True
 
         return self._derivs
+
+    @property
+    def tally_sensitivity(self):
+        if not self._sens_read:
+            # Populate the dictionary if any derivatives are present.
+            if 'sensitivities' in self._f['tallies']:
+                # Read the derivative ids.
+                base = 'tallies/sensitivities'
+                sens_ids = [int(k.split(' ')[1]) for k in self._f[base]]
+
+                # Create each derivative object and add it to the dictionary.
+                for s_id in sens_ids:
+                    group = self._f['tallies/sensitivities/sensitivity {}'
+                                    .format(d_id)]
+                    sens = openmc.Sensitivity(sensitivity_id=d_id)
+                    sens.variable = group['independent variable'][()].decode()
+                    sens.nuclide = group['nuclide'][()].decode()
+                    #if deriv.variable == 'density':
+                    #    deriv.material = group['material'][()]
+                    #elif deriv.variable == 'nuclide_density':
+                    #    deriv.material = group['material'][()]
+                    #    deriv.nuclide = group['nuclide'][()].decode()
+                    #elif deriv.variable == 'temperature':
+                    #    deriv.material = group['material'][()]
+                    self._sens[s_id] = sens
+
+            self._sens_read = True
+
+        return self._sens
 
     @property
     def version(self):

@@ -851,7 +851,6 @@ score_general_ce(Particle& p, int i_tally, int start_index, int filter_index,
               * atom_density * flux;
           }
         } else {
-          // Need to add up contributions for each nuclide
           if (tally.delayedgroup_filter_ != C_NONE) {
             auto i_dg_filt = tally.filters()[tally.delayedgroup_filter_];
             const DelayedGroupFilter& filt
@@ -2254,14 +2253,14 @@ void score_collision_tally(Particle& p)
     match.bins_present_ = false;
 }
 
-void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index, int filter_index,
+void score_collision_sensitivity_tally(Particle& p, int i_tally, int start_index, int filter_index,
   double filter_weight, int i_nuclide, double atom_density, double flux)
 {
   SensitivityTally& tally = dynamic_cast<SensitivityTally&>(*model::tallies[i_tally]);
   //Tally& tally {*model::tallies[i_tally]};
 
   // Get the pre-collision energy of the particle.
-  auto E = p->E_last_;
+  auto E = p.E_last_;
 
   for (auto i = 0; i < tally.scores_.size(); ++i) {
     auto score_bin = tally.scores_[i];
@@ -2270,9 +2269,9 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
 
     switch (score_bin) {
       case SCORE_NU_FISSION:
-        if (p->macro_xs_.absorption == 0) continue;
+        if (p.macro_xs_.absorption == 0) continue;
         if (tally.estimator_ == TallyEstimator::ANALOG) {
-          if (settings::survival_biasing || p->fission_) {
+          if (settings::survival_biasing || p.fission_) {
             if (tally.energyout_filter_ != C_NONE) {
               // Fission has multiple outgoing neutrons so this helper function
               // is used to handle scoring the multiple filter bins.
@@ -2284,29 +2283,29 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
             // No fission events occur if survival biasing is on -- need to
             // calculate fraction of absorptions that would have resulted in
             // nu-fission
-            if (p->neutron_xs_[p->event_nuclide_].absorption > 0) {
-              score = p->wgt_absorb_
-                * p->neutron_xs_[p->event_nuclide_].nu_fission
-                / p->neutron_xs_[p->event_nuclide_].absorption * flux;
+            if (p.neutron_xs_[p.event_nuclide_].absorption > 0) {
+              score = p.wgt_absorb_
+                * p.neutron_xs_[p.event_nuclide_].nu_fission
+                / p.neutron_xs_[p.event_nuclide_].absorption * flux;
             } else {
               score = 0.;
             }
           } else {
             // Skip any non-fission events
-            if (!p->fission_) continue;
+            if (!p.fission_) continue;
             // If there is no outgoing energy filter, than we only need to score
             // to one bin. For the score to be 'analog', we need to score the
             // number of particles that were banked in the fission bank. Since
             // this was weighted by 1/keff, we multiply by keff to get the proper
             // score.
-            score = simulation::keff * p->wgt_bank_ * flux;
+            score = simulation::keff * p.wgt_bank_ * flux;
           }
         } else {
           if (i_nuclide >= 0) {
-            score = p->neutron_xs_[i_nuclide].nu_fission * atom_density
+            score = p.neutron_xs_[i_nuclide].nu_fission * atom_density
               * flux;
           } else {
-            score = p->macro_xs_.nu_fission * flux;
+            score = p.macro_xs_.nu_fission * flux;
           }
         }
         break;
@@ -2324,29 +2323,48 @@ void score_collision_sensitivity_tally(Particle* p, int i_tally, int start_index
     // perturbated variable.
 
     const auto& sens {model::tally_sens[tally.sens_]};
-    const auto cumulative_sensitivities = p->cumulative_sensitivities_[tally.sens_];
+    const auto cumulative_sensitivities = p.cumulative_sensitivities_[tally.sens_];
 
     #pragma omp atomic
-    tally.denominator_ += score*filter_weight;
+    tally.denominator_ += score*filter_weight;  //add an if statement if we want denominator?
 
     // Update tally results
     for (auto idx = 0; idx < cumulative_sensitivities.size(); idx++){
       #pragma omp atomic
       tally.results_(idx, score_index, SensitivityTallyResult::VALUE) += cumulative_sensitivities[idx]*score*filter_weight;
     }
-    if (sens.sens_reaction == SCORE_FISSION ){
-      if (sens.sens_nuclide == p->fission_nuclide){
-        // Get the energy of the parent particle.
-        auto E = p->E_parent_;
 
-        // Bin the energy.
-        if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
-          auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
-          #pragma omp atomic
-          tally.previous_results_(bin, score_index, SensitivityTallyResult::VALUE) += score*filter_weight;
+    // enclose in case switch
+
+    if (sens.sens_reaction == SCORE_FISSION ){
+      if (sens.sens_nuclide == p.fission_nuclide){
+        switch (sens.variable) {
+        
+        case SensitivityVariable::CROSS_SECTION:
+        {
+          // Get the energy of the parent particle.
+          auto E = p.E_parent_
+          // Bin the energy.
+          if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
+            auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
+            #pragma omp atomic
+            tally.previous_results_(bin, score_index, SensitivityTallyResult::VALUE) += score*filter_weight;
+          }
+        }
+          break;
+
+        case SensitivityVariable::MULTIPOLE:
+        {
+          // check if in resonance range
+          // multiply score by derivative of fission cross section wrt multipole parameters / fission cross section
+          // at parent energy. so I need to also evaluate the fission derivative..
+        }
+          break;
         }
       }
     }
+
+
   }
 }
 
