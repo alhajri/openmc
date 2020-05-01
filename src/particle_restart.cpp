@@ -129,7 +129,7 @@ void run_particle_restart()
       std::fill(it->begin(), it->end(), 0.0);
     } // might be a more elegent way, but this is what i'm going with for now
   }
-  
+
   // Allocate space for tally filter matches
   p.filter_matches_.resize(model::tally_filters.size());
 
@@ -137,7 +137,7 @@ void run_particle_restart()
   transport_history_based_single_particle(p);
 
   // Write output if particle made it
-  print_particle(&p);
+  print_particle(p);
 }
 
 } // namespace openmc

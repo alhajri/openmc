@@ -346,11 +346,6 @@ void finalize_batch()
     simulation::n_realizations = 0;
   }
 
-  if (settings::run_mode == RunMode::EIGENVALUE) {
-    // Write batch output
-    if (mpi::master && settings::verbosity >= 7) print_batch_keff();
-  }
-
   // Check_triggers
   if (mpi::master) check_triggers();
 #ifdef OPENMC_MPI
@@ -443,15 +438,13 @@ void finalize_generation()
 
     // Write generation output
     if (mpi::master && settings::verbosity >= 7) {
-      if (simulation::current_gen != settings::gen_per_batch) {
-        print_generation();
-      }
+      print_generation();
     }
 
   }
 }
 
-void initialize_history(Particle* p, int64_t index_source)
+void initialize_history(Particle& p, int64_t index_source)
 {
   // set defaults
   if (settings::run_mode == RunMode::FIXED_SOURCE) {
@@ -461,89 +454,89 @@ void initialize_history(Particle* p, int64_t index_source)
     uint64_t seed = init_seed(id, STREAM_SOURCE);
     // sample from external source distribution or custom library then set
     auto site = sample_external_source(&seed);
-    p->from_source(&site);
+    p.from_source(&site);
   } else if (settings::run_mode == RunMode::EIGENVALUE) {
     // set defaults for eigenvalue simulations from primary bank
-    p->from_source(&simulation::source_bank[index_source - 1]);
+    p.from_source(&simulation::source_bank[index_source - 1]);
   }
-  p->current_work_ = index_source;
+  p.current_work_ = index_source;
 
   // set identifier for particle
-  p->id_ = simulation::work_index[mpi::rank] + index_source;
+  p.id_ = simulation::work_index[mpi::rank] + index_source;
 
   // set progeny count to zero
-  p->n_progeny_ = 0;
+  p.n_progeny_ = 0;
 
   // set random number seed
   int64_t particle_seed = (simulation::total_gen + overall_generation() - 1)
-    * settings::n_particles + p->id_;
-  init_particle_seeds(particle_seed, p->seeds_);
+    * settings::n_particles + p.id_;
+  init_particle_seeds(particle_seed, p.seeds_);
 
   // set particle trace
-  p->trace_ = false;
+  p.trace_ = false;
   if (simulation::current_batch == settings::trace_batch &&
       simulation::current_gen == settings::trace_gen &&
-      p->id_ == settings::trace_particle) p->trace_ = true;
+      p.id_ == settings::trace_particle) p.trace_ = true;
 
   // Set particle track.
-  p->write_track_ = false;
+  p.write_track_ = false;
   if (settings::write_all_tracks) {
-    p->write_track_ = true;
+    p.write_track_ = true;
   } else if (settings::track_identifiers.size() > 0) {
     for (const auto& t : settings::track_identifiers) {
       if (simulation::current_batch == t[0] &&
           simulation::current_gen == t[1] &&
-          p->id_ == t[2]) {
-        p->write_track_ = true;
+          p.id_ == t[2]) {
+        p.write_track_ = true;
         break;
       }
     }
   }
 
   // Display message if high verbosity or trace is on
-  if (settings::verbosity >= 9 || p->trace_) {
-    write_message("Simulating Particle " + std::to_string(p->id_));
+  if (settings::verbosity >= 9 || p.trace_) {
+    write_message("Simulating Particle " + std::to_string(p.id_));
   }
 
   // Add paricle's starting weight to count for normalizing tallies later
   #pragma omp atomic
-  simulation::total_weight += p->wgt_;
+  simulation::total_weight += p.wgt_;
 
   initialize_history_partial(p);
 }
 
-void initialize_history_partial(Particle* p)
+void initialize_history_partial(Particle& p)
 {
   // Force calculation of cross-sections by setting last energy to zero
   if (settings::run_CE) {
-    for (auto& micro : p->neutron_xs_) micro.last_E = 0.0;
+    for (auto& micro : p.neutron_xs_) micro.last_E = 0.0;
   }
 
   // Prepare to write out particle track.
-  if (p->write_track_) add_particle_track(*p);
+  if (p.write_track_) add_particle_track(p);
 
   // Every particle starts with no accumulated flux derivative and 
   // no accumulated sensitivities.
   if (!model::active_tallies.empty())
   {
-    p->flux_derivs_.resize(model::tally_derivs.size(), 0.0);
-    std::fill(p->flux_derivs_.begin(), p->flux_derivs_.end(), 0.0);
+    p.flux_derivs_.resize(model::tally_derivs.size(), 0.0);
+    std::fill(p.flux_derivs_.begin(), p.flux_derivs_.end(), 0.0);
 
 
     // This is probably wrong because flux_derivs_ is a vector and
     // cumulative_sensitivities_ is a vector of vectors...
     // these need to resized to be of size energy_bins or multipole_bins
-    p->cumulative_sensitivities_.resize(model::tally_sens.size(), {0.0});
+    p.cumulative_sensitivities_.resize(model::tally_sens.size(), {0.0});
     for (int idx=0; idx< model::tally_sens.size();idx++){
-      p->cumulative_sensitivities_[idx].resize(model::tally_sens[idx].n_bins_,0.0);
+      p.cumulative_sensitivities_[idx].resize(model::tally_sens[idx].n_bins_,0.0);
     }
-    for (auto it = p->cumulative_sensitivities_.begin(); it != p->cumulative_sensitivities_.end(); it++){
+    for (auto it = p.cumulative_sensitivities_.begin(); it != p.cumulative_sensitivities_.end(); it++){
       std::fill(it->begin(), it->end(), 0.0);
     } // might be a more elegent way, but this is what i'm going with for now
   }
 
   // Allocate space for tally filter matches
-  p->filter_matches_.resize(model::tally_filters.size());
+  p.filter_matches_.resize(model::tally_filters.size());
 }
 
 int overall_generation()
@@ -638,7 +631,7 @@ void transport_history_based()
   #pragma omp parallel for schedule(runtime)
   for (int64_t i_work = 1; i_work <= simulation::work_per_rank; ++i_work) {
     Particle p;
-    initialize_history(&p, i_work);
+    initialize_history(p, i_work);
     transport_history_based_single_particle(p);
   }
 }
