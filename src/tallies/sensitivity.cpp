@@ -489,7 +489,7 @@ score_track_sensitivity(Particle& p, double distance)
 
         double score = atom_density*distance;
 
-        for (int deriv_idx = start; deriv_idx < size ; deriv_idx++){
+        for (int deriv_idx = start; deriv_idx < start + size ; deriv_idx++){
           cumulative_sensitivities[deriv_idx] -= score*derivative.second[deriv_idx - start];
         }
       }
@@ -573,7 +573,7 @@ void score_collision_sensitivity(Particle& p)
 
         double scatter = (micro_xs.total - micro_xs.absorption);
 
-        for (int deriv_idx = start; deriv_idx < size ; deriv_idx++){
+        for (int deriv_idx = start; deriv_idx < start + size ; deriv_idx++){
           cumulative_sensitivities[deriv_idx] += derivative.second[deriv_idx - start]/scatter;
         }
       }
