@@ -2343,7 +2343,7 @@ void score_collision_sensitivity_tally(Particle& p, int i_tally, int start_index
         case SensitivityVariable::CROSS_SECTION:
         {
           // Get the energy of the parent particle.
-          auto E = p.E_parent_
+          auto E = p.E_parent_;
           // Bin the energy.
           if (E >= sens.energy_bins_.front() && E <= sens.energy_bins_.back()) {
             auto bin = lower_bound_index(sens.energy_bins_.begin(), sens.energy_bins_.end(), E);
