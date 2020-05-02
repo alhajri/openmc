@@ -332,7 +332,7 @@ TallySensitivity::TallySensitivity(pugi::xml_node node)
 
     // ADD LOGIC TO SET THE BINS TO SIZE OF MULTIPOLE PARAMETERS
     // set n_bins_ 
-    auto nuc = data::nuclides[sens_nuclide];
+    const auto& nuc {*data::nuclides[sens_nuclide]};
     n_bins_ = nuc.multipole_.data_.shape()[0] * nuc.multipole_.data_.shape()[1] * 2;
 
   }  else {
@@ -571,8 +571,10 @@ void score_collision_sensitivity(Particle& p)
         int start = derivative.first;
         int size  = derivative.second.size();
 
+        double scatter = (micro_xs.total - micro_xs.absorption);
+
         for (int deriv_idx = start; deriv_idx < size ; deriv_idx++){
-          cumulative_sensitivities[deriv_idx] += derivative.second[deriv_idx - start]/micro_xs.scatter;
+          cumulative_sensitivities[deriv_idx] += derivative.second[deriv_idx - start]/scatter;
         }
       }
       break;
