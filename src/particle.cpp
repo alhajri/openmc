@@ -251,7 +251,7 @@ Particle::event_advance()
   // I could move them to the same if statement as above, but this is 
   // cleaner to keep 'em separated
   if (!model::active_tallies.empty()) {
-    score_track_sensitivity(this, distance);
+    score_track_sensitivity(*this, distance);
   }
 
 }
