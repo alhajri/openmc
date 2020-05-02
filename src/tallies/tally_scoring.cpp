@@ -2370,7 +2370,7 @@ void score_collision_sensitivity_tally(Particle& p, int i_tally, int start_index
 
             double sen_score = score*filter_weight/sig_f;
 
-            for (deriv_idx = start; deriv_idx < size ; deriv_idx++){
+            for (int deriv_idx = start; deriv_idx < size ; deriv_idx++){
               #pragma omp atomic
               tally.previous_results_(deriv_idx, score_index, SensitivityTallyResult::VALUE) += sen_score*derivative.second[deriv_idx - start];
             }
