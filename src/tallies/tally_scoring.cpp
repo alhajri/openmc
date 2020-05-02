@@ -2336,12 +2336,13 @@ void score_collision_sensitivity_tally(Particle& p, int i_tally, int start_index
 
     // enclose in case switch
 
-    if (sens.sens_reaction == SCORE_FISSION ){
-      if (sens.sens_nuclide == p.fission_nuclide){
-        switch (sens.variable) {
-        
-        case SensitivityVariable::CROSS_SECTION:
-        {
+    
+    if (sens.sens_nuclide == p.fission_nuclide){
+      switch (sens.variable) {
+      
+      case SensitivityVariable::CROSS_SECTION:
+      {
+        if (sens.sens_reaction == SCORE_FISSION ){
           // Get the energy of the parent particle.
           auto E = p.E_parent_;
           // Bin the energy.
@@ -2351,40 +2352,34 @@ void score_collision_sensitivity_tally(Particle& p, int i_tally, int start_index
             tally.previous_results_(bin, score_index, SensitivityTallyResult::VALUE) += score*filter_weight;
           }
         }
-          break;
-
-        case SensitivityVariable::MULTIPOLE:
-        {
-          // check if in resonance range
-          const auto& nuc {*data::nuclides[sens.sens_nuclide]};
-          if (multipole_in_range(nuc, p.E_parent_)){
-            // Calculate derivative of the fission cross section at p->E_parent_
-            double sig_s, sig_a, sig_f;
-            std::tie(sig_s, sig_a, sig_f)
-              = nuc.multipole_->evaluate(p.E_parent_, p.sqrtkT_);
-            auto derivative = nuc.multipole_->evaluate_pole_deriv_fission(p.E_parent_, p.sqrtkT_);
-
-            // sum/bin 1/micro_sigma_scatter * derivative
-            int start = derivative.first;
-            int size  = derivative.second.size();
-
-            double sen_score = score*filter_weight/sig_f;
-
-            for (int deriv_idx = start; deriv_idx < size ; deriv_idx++){
-              #pragma omp atomic
-              tally.previous_results_(deriv_idx, score_index, SensitivityTallyResult::VALUE) += sen_score*derivative.second[deriv_idx - start];
-            }
+      }
+        break;
+      case SensitivityVariable::MULTIPOLE:
+      {
+        // check if in resonance range
+        const auto& nuc {*data::nuclides[sens.sens_nuclide]};
+        if (multipole_in_range(nuc, p.E_parent_)){
+          // Calculate derivative of the fission cross section at p->E_parent_
+          double sig_s, sig_a, sig_f;
+          std::tie(sig_s, sig_a, sig_f)
+            = nuc.multipole_->evaluate(p.E_parent_, p.sqrtkT_);
+          auto derivative = nuc.multipole_->evaluate_pole_deriv_fission(p.E_parent_, p.sqrtkT_);
+          // sum/bin 1/micro_sigma_scatter * derivative
+          int start = derivative.first;
+          int size  = derivative.second.size();
+          double sen_score = score*filter_weight/sig_f;
+          for (int deriv_idx = start; deriv_idx < size ; deriv_idx++){
+            #pragma omp atomic
+            tally.previous_results_(deriv_idx, score_index, SensitivityTallyResult::VALUE) += sen_score*derivative.second[deriv_idx - start];
           }
-          // multiply score by derivative of fission cross section wrt multipole parameters / fission cross section
-          // at parent energy. so I need to also evaluate the fission derivative..
-          
         }
-          break;
-        }
+        // multiply score by derivative of fission cross section wrt multipole parameters / fission cross section
+        // at parent energy. so I need to also evaluate the fission derivative..
+        
+      }
+        break;
       }
     }
-
-
   }
 }
 
