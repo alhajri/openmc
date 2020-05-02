@@ -476,14 +476,23 @@ score_track_sensitivity(Particle& p, double distance)
       //    flux_deriv -= distance * (dsig_s + dsig_a)
       //      * material.atom_density_(i);
       //  }
-      //}
-
+      //}      
       // check if in resonance range
+      const auto& nuc {*data::nuclides[sens.sens_nuclide]};
+      if (multipole_in_range(nuc, p.E_)){
+        // Calculate derivative of the total cross section at p->E_
+        auto derivative = nuc.multipole_->evaluate_pole_deriv_total(p.E_, p.sqrtkT_);
 
-      // the score is atom_density * derivative_total * distance
+        // the score is atom_density * derivative_total * distance
+        int start = derivative.first;
+        int size  = derivative.second.size();
 
-      // bin
+        double score = atom_density*distance;
 
+        for (deriv_idx = start; deriv_idx < size ; deriv_idx++){
+          cumulative_sensitivities[deriv_idx] -= score*derivative.second[deriv_idx - start];
+        }
+      }
       break;
     }
   }
@@ -550,35 +559,22 @@ void score_collision_sensitivity(Particle& p)
       break;
 
     case SensitivityVariable::MULTIPOLE:
-      // Loop over the material's nuclides until we find the event nuclide.
-      //for (auto i_nuc : material.nuclide_) {
-      //  const auto& nuc {*data::nuclides[i_nuc]};
-      //  if (i_nuc == p->event_nuclide_ && multipole_in_range(&nuc, p->E_last_)) {
-      //    // phi is proportional to Sigma_s
-      //    // (1 / phi) * (d_phi / d_T) = (d_Sigma_s / d_T) / Sigma_s
-      //    // (1 / phi) * (d_phi / d_T) = (d_sigma_s / d_T) / sigma_s
-      //    const auto& micro_xs {p->neutron_xs_[i_nuc]};
-      //    double dsig_s, dsig_a, dsig_f;
-      //    std::tie(dsig_s, dsig_a, dsig_f)
-      //      = nuc.multipole_->evaluate_deriv(p->E_last_, p->sqrtkT_);
-      //    flux_deriv += dsig_s / (micro_xs.total - micro_xs.absorption);
-      //    // Note that this is an approximation!  The real scattering cross
-      //    // section is
-      //    // Sigma_s(E'->E, u'->u) = Sigma_s(E') * P(E'->E, u'->u).
-      //    // We are assuming that d_P(E'->E, u'->u) / d_T = 0 and only
-      //    // computing d_S(E') / d_T.  Using this approximation in the vicinity
-      //    // of low-energy resonances causes errors (~2-5% for PWR pincell
-      //    // eigenvalue derivatives).
-      //  }
-      //}
 
       // check if in resonance range
+      const auto& nuc {*data::nuclides[i]};
+      if (multipole_in_range(nuc, p.E_last_)){
+        // Calculate derivative of the scattering cross section at p->E_last_
+        const auto& micro_xs {p.neutron_xs_[i]};
+        auto derivative = nuc.multipole_->evaluate_pole_deriv_scatter(p.E_last_, p.sqrtkT_);
 
-      // Calculate derivative of the scattering cross section at p->E_last_
-      // start_idx = i_pole*2*shape()[1]
+        // sum/bin 1/micro_sigma_scatter * derivative
+        int start = derivative.first;
+        int size  = derivative.second.size();
 
-      // sum/bin 1/micro_sigma_scatter * derivative
-
+        for (deriv_idx = start; deriv_idx < size ; deriv_idx++){
+          cumulative_sensitivities[deriv_idx] += derivative.second[deriv_idx - start]/micro_xs.scatter;
+        }
+      }
       break;
     }
   }
