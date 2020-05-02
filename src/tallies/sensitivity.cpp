@@ -333,7 +333,7 @@ TallySensitivity::TallySensitivity(pugi::xml_node node)
     // ADD LOGIC TO SET THE BINS TO SIZE OF MULTIPOLE PARAMETERS
     // set n_bins_ 
     const auto& nuc {*data::nuclides[sens_nuclide]};
-    n_bins_ = nuc.multipole_.data_.shape()[0] * nuc.multipole_.data_.shape()[1] * 2;
+    n_bins_ = nuc.multipole_->data_.shape()[0] * nuc.multipole_->data_.shape()[1] * 2;
 
   }  else {
     fatal_error(fmt::format("Unrecognized variable \"{}\" on derivative {}",
