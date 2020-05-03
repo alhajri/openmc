@@ -416,9 +416,9 @@ WindowedMultipole::evaluate_fit_deriv_total(double E, double sqrtkT)
     broaden_wmp_polynomials(E, dopp, fit_order_ + 1, broadened_polynomials.data());
     for (int i_poly = 0; i_poly < fit_order_ + 1; ++i_poly) {
       derivative[i_poly] = broadened_polynomials[i_poly];
-      derivative[i_poly + FIT_A*curvefit_.shape[1]] = broadened_polynomials[i_poly];
+      derivative[i_poly + FIT_A*curvefit_.shape()[1]] = broadened_polynomials[i_poly];
       if (fissionable_) {
-        derivative[i_poly + FIT_F*curvefit_.shape[1]] = broadened_polynomials[i_poly];
+        derivative[i_poly + FIT_F*curvefit_.shape()[1]] = broadened_polynomials[i_poly];
       }
     }
   } else {
@@ -426,9 +426,9 @@ WindowedMultipole::evaluate_fit_deriv_total(double E, double sqrtkT)
     double temp = invE;
     for (int i_poly = 0; i_poly < fit_order_ + 1; ++i_poly) {
       derivative[i_poly] = temp;
-      derivative[i_poly + FIT_A*curvefit_.shape[1]] = temp;
+      derivative[i_poly + FIT_A*curvefit_.shape()[1]] = temp;
       if (fissionable_) {
-        derivative[i_poly + FIT_F*curvefit_.shape[1]] = temp;
+        derivative[i_poly + FIT_F*curvefit_.shape()[1]] = temp;
       }
       temp *= sqrtE;
     }
