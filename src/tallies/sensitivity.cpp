@@ -474,6 +474,7 @@ score_track_sensitivity(Particle& p, double distance)
     break;
 
     case SensitivityVariable::MULTIPOLE:    
+    {
       // check if in resonance range
       const auto& nuc {*data::nuclides[sens.sens_nuclide]};
       if (multipole_in_range(nuc, p.E_)){
@@ -490,9 +491,11 @@ score_track_sensitivity(Particle& p, double distance)
           cumulative_sensitivities[deriv_idx] -= score*derivative.second[deriv_idx - start];
         }
       }
-    break;
+    }
+      break;
 
-    case SensitivityVariable::CURVE_FIT:  
+    case SensitivityVariable::CURVE_FIT:
+    {
       // check if in resonance range
       const auto& nuc {*data::nuclides[sens.sens_nuclide]};
       if (multipole_in_range(nuc, p.E_)){
@@ -509,7 +512,8 @@ score_track_sensitivity(Particle& p, double distance)
           cumulative_sensitivities[deriv_idx] -= score*derivative.second[deriv_idx - start];
         }
       }
-    break;
+    }
+      break;
     }
   }
 }
@@ -575,7 +579,7 @@ void score_collision_sensitivity(Particle& p)
       break;
 
     case SensitivityVariable::MULTIPOLE:
-
+    {
       // check if in resonance range
       const auto& nuc {*data::nuclides[i]};
       if (multipole_in_range(nuc, p.E_last_)){
@@ -593,10 +597,11 @@ void score_collision_sensitivity(Particle& p)
           cumulative_sensitivities[deriv_idx] += derivative.second[deriv_idx - start]/scatter;
         }
       }
+    }
       break;
 
     case SensitivityVariable::CURVE_FIT:
-
+    {
       // check if in resonance range
       const auto& nuc {*data::nuclides[i]};
       if (multipole_in_range(nuc, p.E_last_)){
@@ -614,6 +619,7 @@ void score_collision_sensitivity(Particle& p)
           cumulative_sensitivities[deriv_idx] += derivative.second[deriv_idx - start]/scatter;
         }
       }
+    }
       break;
     }
   }
