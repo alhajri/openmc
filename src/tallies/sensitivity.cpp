@@ -490,7 +490,7 @@ score_track_sensitivity(Particle& p, double distance)
           cumulative_sensitivities[deriv_idx] -= score*derivative.second[deriv_idx - start];
         }
       }
-      break;
+    break;
 
     case SensitivityVariable::CURVE_FIT:  
       // check if in resonance range
@@ -509,7 +509,7 @@ score_track_sensitivity(Particle& p, double distance)
           cumulative_sensitivities[deriv_idx] -= score*derivative.second[deriv_idx - start];
         }
       }
-      break;
+    break;
     }
   }
 }
