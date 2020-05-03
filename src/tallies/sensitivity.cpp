@@ -335,7 +335,17 @@ TallySensitivity::TallySensitivity(pugi::xml_node node)
     const auto& nuc {*data::nuclides[sens_nuclide]};
     n_bins_ = nuc.multipole_->data_.shape()[0] * nuc.multipole_->data_.shape()[1] * 2;
 
-  }  else {
+  } else if (variable_str == "curve_fit") {
+    variable = SensitivityVariable::CURVE_FIT;
+
+    // check if curvefit sensitivities were asked for, maybe move to a different variable
+
+    // ADD LOGIC TO SET THE BINS TO SIZE OF MULTIPOLE PARAMETERS
+    // set n_bins_ 
+    const auto& nuc {*data::nuclides[sens_nuclide]};
+    n_bins_ = nuc.multipole_->curvefit_.shape()[0] * nuc.multipole_->curvefit_.shape()[1] * nuc.multipole_->curvefit_.shape()[2];
+
+  } else {
     fatal_error(fmt::format("Unrecognized variable \"{}\" on derivative {}",
       variable_str, id));
   }
@@ -463,25 +473,31 @@ score_track_sensitivity(Particle& p, double distance)
     }
     break;
 
-    case SensitivityVariable::MULTIPOLE:
-      //for (auto i = 0; i < material.nuclide_.size(); ++i) {
-      //  const auto& nuc {*data::nuclides[material.nuclide_[i]]};
-      //  if (multipole_in_range(&nuc, p->E_last_)) {
-      //    // phi is proportional to e^(-Sigma_tot * dist)
-      //    // (1 / phi) * (d_phi / d_T) = - (d_Sigma_tot / d_T) * dist
-      //    // (1 / phi) * (d_phi / d_T) = - N (d_sigma_tot / d_T) * dist
-      //    double dsig_s, dsig_a, dsig_f;
-      //    std::tie(dsig_s, dsig_a, dsig_f)
-      //      = nuc.multipole_->evaluate_deriv(p->E_, p->sqrtkT_);
-      //    flux_deriv -= distance * (dsig_s + dsig_a)
-      //      * material.atom_density_(i);
-      //  }
-      //}      
+    case SensitivityVariable::MULTIPOLE:    
       // check if in resonance range
       const auto& nuc {*data::nuclides[sens.sens_nuclide]};
       if (multipole_in_range(nuc, p.E_)){
         // Calculate derivative of the total cross section at p->E_
         auto derivative = nuc.multipole_->evaluate_pole_deriv_total(p.E_, p.sqrtkT_);
+
+        // the score is atom_density * derivative_total * distance
+        int start = derivative.first;
+        int size  = derivative.second.size();
+
+        double score = atom_density*distance;
+
+        for (int deriv_idx = start; deriv_idx < start + size ; deriv_idx++){
+          cumulative_sensitivities[deriv_idx] -= score*derivative.second[deriv_idx - start];
+        }
+      }
+      break;
+
+    case SensitivityVariable::CURVE_FIT:  
+      // check if in resonance range
+      const auto& nuc {*data::nuclides[sens.sens_nuclide]};
+      if (multipole_in_range(nuc, p.E_)){
+        // Calculate derivative of the total cross section at p->E_
+        auto derivative = nuc.multipole_->evaluate_fit_deriv_total(p.E_, p.sqrtkT_);
 
         // the score is atom_density * derivative_total * distance
         int start = derivative.first;
@@ -566,6 +582,27 @@ void score_collision_sensitivity(Particle& p)
         // Calculate derivative of the scattering cross section at p->E_last_
         const auto& micro_xs {p.neutron_xs_[i]};
         auto derivative = nuc.multipole_->evaluate_pole_deriv_scatter(p.E_last_, p.sqrtkT_);
+
+        // sum/bin 1/micro_sigma_scatter * derivative
+        int start = derivative.first;
+        int size  = derivative.second.size();
+
+        double scatter = (micro_xs.total - micro_xs.absorption);
+
+        for (int deriv_idx = start; deriv_idx < start + size ; deriv_idx++){
+          cumulative_sensitivities[deriv_idx] += derivative.second[deriv_idx - start]/scatter;
+        }
+      }
+      break;
+
+    case SensitivityVariable::CURVE_FIT:
+
+      // check if in resonance range
+      const auto& nuc {*data::nuclides[i]};
+      if (multipole_in_range(nuc, p.E_last_)){
+        // Calculate derivative of the scattering cross section at p->E_last_
+        const auto& micro_xs {p.neutron_xs_[i]};
+        auto derivative = nuc.multipole_->evaluate_fit_deriv_scatter(p.E_last_, p.sqrtkT_);
 
         // sum/bin 1/micro_sigma_scatter * derivative
         int start = derivative.first;

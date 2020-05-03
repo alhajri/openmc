@@ -68,6 +68,12 @@ public:
 
   std::pair<int, std::vector<double>> evaluate_pole_deriv_fission(double E, double sqrtkT);
 
+  std::pair<int, std::vector<double>> evaluate_fit_deriv_total(double E, double sqrtkT);
+
+  std::pair<int, std::vector<double>> evaluate_fit_deriv_scatter(double E, double sqrtkT);
+
+  std::pair<int, std::vector<double>> evaluate_fit_deriv_fission(double E, double sqrtkT);
+
   // Data members
   std::string name_; //!< Name of nuclide
   bool fissionable_; //!< Is the nuclide fissionable?

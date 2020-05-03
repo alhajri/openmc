@@ -59,8 +59,8 @@ public:
 // Different independent variables
 enum class SensitivityVariable {
   CROSS_SECTION,
-  MULTIPOLE
-  // add a third for curvefit?
+  MULTIPOLE,
+  CURVE_FIT
 };
 
 struct TallySensitivity {
@@ -71,8 +71,6 @@ struct TallySensitivity {
   int sens_reaction;    //!< Need something to specify reaction, use ReactionType?
   std::vector<double> energy_bins_; //!< Energy bins on which to discretize the cross section
   int n_bins_; //!< something to indicate the size of the vector
-  bool curvefit {false}; //!< whether or not to calculate the sensitivity to curvefit coefficients
-                         //! if false, just look at pole parameters, if true only look at curvefit coeffs
 
   TallySensitivity() {}
   explicit TallySensitivity(pugi::xml_node node);

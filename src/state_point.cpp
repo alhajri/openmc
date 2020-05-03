@@ -147,7 +147,11 @@ openmc_statepoint_write(const char* filename, bool* write_source)
             data::nuclides[sens.sens_nuclide]->name_);
           // write dataset score/reaction
         } else if (sens.variable == SensitivityVariable::MULTIPOLE) {
-          write_dataset(sens_group, "independent variable", "nuclide_density");
+          write_dataset(sens_group, "independent variable", "multipole");
+          write_dataset(sens_group, "nuclide",
+            data::nuclides[sens.sens_nuclide]->name_);
+        } else if (sens.variable == SensitivityVariable::CURVE_FIT) {
+          write_dataset(sens_group, "independent variable", "curvefit");
           write_dataset(sens_group, "nuclide",
             data::nuclides[sens.sens_nuclide]->name_);
         } else {

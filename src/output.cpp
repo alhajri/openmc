@@ -618,6 +618,10 @@ write_tallies()
         fmt::print(tallies_out, " Multipole sensitivity Nuclide {}\n",
           data::nuclides[sens.sens_nuclide]->name_);
         break;
+      case SensitivityVariable::CURVE_FIT:
+        fmt::print(tallies_out, " Curvefit sensitivity Nuclide {}\n",
+          data::nuclides[sens.sens_nuclide]->name_);
+        break;
       default:
         fatal_error(fmt::format("Sensitivity tally dependent variable for "
           "tally {} not defined in output.cpp", tally.id_));
