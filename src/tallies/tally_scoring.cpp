@@ -2363,7 +2363,7 @@ void score_collision_sensitivity_tally(Particle& p, int i_tally, int start_index
           double sig_s, sig_a, sig_f;
           std::tie(sig_s, sig_a, sig_f)
             = nuc.multipole_->evaluate(p.E_parent_, p.sqrtkT_);
-          auto derivative = nuc.multipole_->evaluate_pole_deriv_fission(p.E_parent_, p.sqrtkT_);
+          auto derivative = nuc.multipole_->evaluate_pole_deriv_fission(p.E_parent_, p.sqrtkT_); //This actually needs to be parent kT
           // sum/bin 1/micro_sigma_scatter * derivative
           int start = derivative.first;
           int size  = derivative.second.size();
@@ -2388,7 +2388,7 @@ void score_collision_sensitivity_tally(Particle& p, int i_tally, int start_index
           double sig_s, sig_a, sig_f;
           std::tie(sig_s, sig_a, sig_f)
             = nuc.multipole_->evaluate(p.E_parent_, p.sqrtkT_);
-          auto derivative = nuc.multipole_->evaluate_fit_deriv_fission(p.E_parent_, p.sqrtkT_);
+          auto derivative = nuc.multipole_->evaluate_fit_deriv_fission(p.E_parent_, p.sqrtkT_); //This actually needs to be parent kT
           // sum/bin 1/micro_sigma_scatter * derivative
           int start = derivative.first;
           int size  = derivative.second.size();

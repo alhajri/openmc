@@ -234,12 +234,13 @@ WindowedMultipole::evaluate_pole_deriv_total(double E, double sqrtkT)
       derivative[start_idx+3] = (c_temp).real();
       derivative[start_idx+4] = (c_temp).imag();
       derivative[start_idx+5] = (c_temp).real();
-      if (fissionable_){
-        derivative[start_idx]   += (-1.0 * data_(i_pole, MP_RF) * psi_chi * c_temp).imag();
-        derivative[start_idx+1] += (-1.0 * data_(i_pole, MP_RF) * psi_chi * c_temp).real();
-        derivative[start_idx+6] = (c_temp).imag();
-        derivative[start_idx+7] = (c_temp).real();
-      }
+      // Total = Scatter + Absorption, therefore changing r_f does not affect Total Cross Section
+      //if (fissionable_){
+      //  derivative[start_idx]   += (-1.0 * data_(i_pole, MP_RF) * psi_chi * c_temp).imag();
+      //  derivative[start_idx+1] += (-1.0 * data_(i_pole, MP_RF) * psi_chi * c_temp).real();
+      //  derivative[start_idx+6] = (c_temp).imag();
+      //  derivative[start_idx+7] = (c_temp).real();
+      //}
     }
   } else {
     // At temperature, use Faddeeva function-based form.
@@ -257,12 +258,13 @@ WindowedMultipole::evaluate_pole_deriv_total(double E, double sqrtkT)
         derivative[start_idx+3] = (1.0i * w_val).real();
         derivative[start_idx+4] = (w_val).real();
         derivative[start_idx+5] = (1.0i * w_val).real();
-        if (fissionable_){
-          derivative[start_idx]   += (-1.0 * data_(i_pole, MP_RF) * dopp * dw_val).real();
-          derivative[start_idx+1] += (-1.0i * data_(i_pole, MP_RF) * dopp * dw_val).real();
-          derivative[start_idx+6] = (w_val).real();
-          derivative[start_idx+7] = (1.0i * w_val).real();
-        }
+        // Total = Scatter + Absorption, therefore changing r_f does not affect Total Cross Section
+        //if (fissionable_){
+        //  derivative[start_idx]   += (-1.0 * data_(i_pole, MP_RF) * dopp * dw_val).real();
+        //  derivative[start_idx+1] += (-1.0i * data_(i_pole, MP_RF) * dopp * dw_val).real();
+        //  derivative[start_idx+6] = (w_val).real();
+        //  derivative[start_idx+7] = (1.0i * w_val).real();
+        //}
       }
     }
   }
@@ -417,9 +419,10 @@ WindowedMultipole::evaluate_fit_deriv_total(double E, double sqrtkT)
     for (int i_poly = 0; i_poly < fit_order_ + 1; ++i_poly) {
       derivative[i_poly] = broadened_polynomials[i_poly];
       derivative[i_poly + FIT_A*curvefit_.shape()[1]] = broadened_polynomials[i_poly];
-      if (fissionable_) {
-        derivative[i_poly + FIT_F*curvefit_.shape()[1]] = broadened_polynomials[i_poly];
-      }
+      // Total = Scatter + Absorption, therefore changing r_f does not affect Total Cross Section
+      //if (fissionable_) {
+      //  derivative[i_poly + FIT_F*curvefit_.shape()[1]] = broadened_polynomials[i_poly];
+      //}
     }
   } else {
     // Evaluate as if it were a polynomial
@@ -427,9 +430,10 @@ WindowedMultipole::evaluate_fit_deriv_total(double E, double sqrtkT)
     for (int i_poly = 0; i_poly < fit_order_ + 1; ++i_poly) {
       derivative[i_poly] = temp;
       derivative[i_poly + FIT_A*curvefit_.shape()[1]] = temp;
-      if (fissionable_) {
-        derivative[i_poly + FIT_F*curvefit_.shape()[1]] = temp;
-      }
+      // Total = Scatter + Absorption, therefore changing r_f does not affect Total Cross Section
+      //if (fissionable_) {
+      //  derivative[i_poly + FIT_F*curvefit_.shape()[1]] = temp;
+      //}
       temp *= sqrtE;
     }
   }
