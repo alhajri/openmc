@@ -243,16 +243,16 @@ Particle::event_advance()
   }
 
   // Score flux derivative accumulators for differential tallies.
-  if (!model::active_tallies.empty()) {
-    score_track_derivative(*this, distance);
-  }
 
   // Score flux sensitivity accumulators for differential tallies.
   // I could move them to the same if statement as above, but this is 
   // cleaner to keep 'em separated
+
   if (!model::active_tallies.empty()) {
+    score_track_derivative(*this, distance);
     score_track_sensitivity(*this, distance);
   }
+
 
 }
 
@@ -355,10 +355,10 @@ Particle::event_collide()
   }
 
   // Score flux derivative accumulators for differential tallies.
-  if (!model::active_tallies.empty()) score_collision_derivative(*this);
-
-  // Score flux sensitivity accumulators for differential tallies.
-  if (!model::active_tallies.empty()) score_collision_sensitivity(*this);
+  if (!model::active_tallies.empty()) {
+    score_collision_derivative(*this);
+    score_collision_sensitivity(*this);
+  }
 }
 
 void
