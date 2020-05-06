@@ -855,7 +855,8 @@ class MeshFilter(Filter):
         element[0].text = str(self.mesh.id)
         return element
 
-
+class MeshbornFilter(MeshFilter):
+    
 class MeshSurfaceFilter(MeshFilter):
     """Filter events by surface crossings on a regular, rectangular mesh.
 
