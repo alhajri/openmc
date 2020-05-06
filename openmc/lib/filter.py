@@ -18,7 +18,7 @@ __all__ = ['Filter', 'AzimuthalFilter', 'CellFilter',
            'CellbornFilter', 'CellfromFilter', 'DistribcellFilter',
            'DelayedGroupFilter', 'EnergyFilter', 'EnergyoutFilter',
            'EnergyFunctionFilter', 'ImportanceFilter', 'LegendreFilter', 'MaterialFilter', 
-           'MeshFilter','MeshSurfaceFilter', 'MuFilter', 'PolarFilter', 
+           'MeshFilter','MeshbornFilter','MeshSurfaceFilter', 'MuFilter', 'PolarFilter', 
            'SphericalHarmonicsFilter', 'SpatialLegendreFilter', 'SurfaceFilter',
            'UniverseFilter', 'ZernikeFilter', 'ZernikeRadialFilter', 'filters']
 
