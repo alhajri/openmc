@@ -148,6 +148,11 @@ SensitivityTally::SensitivityTally(pugi::xml_node node)
     this->init_triggers(node);
   }
 
+  // check for gpt
+  if (check_for_node(node, "gpt")) {
+    gpt_ = true;
+  }
+
   // =======================================================================
   // SET TALLY ESTIMATOR
 
@@ -257,13 +262,15 @@ void SensitivityTally::accumulate()
     }
 
     // Account for number of source particles in normalization
-    //double norm = total_source / (settings::n_particles * settings::gen_per_batch);
+    if (gpt_) {
+      double norm = total_source / (settings::n_particles * settings::gen_per_batch);
+      denominator_ = norm;
+    }
 
     // Accumulate each result
     // TODO: ignore the first realization
     for (int i = 0; i < results_.shape()[0]; ++i) {
       for (int j = 0; j < results_.shape()[1]; ++j) {
-        //double val = results_(i, j, SensitivityTallyResult::PREVIOUS_VALUE) * norm / denominator_;
         double val = previous_results_(i, j, SensitivityTallyResult::VALUE)/ denominator_;
         results_(i, j, SensitivityTallyResult::SUM) += val;
         results_(i, j, SensitivityTallyResult::SUM_SQ) += val*val;

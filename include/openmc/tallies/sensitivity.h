@@ -53,6 +53,8 @@ public:
 
   xt::xtensor<double, 3> previous_results_;
 
+  bool gpt_ {false}; //!< if true, do not use denominator.
+
   //int sens_ {C_NONE}; //!< Index of a Sensitivity object for sensitivity tallies.
 };
 
