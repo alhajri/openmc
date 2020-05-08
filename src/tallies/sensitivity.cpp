@@ -452,6 +452,13 @@ score_track_sensitivity(Particle& p, double distance)
             macro_xs = p.macro_xs_.total - p.macro_xs_.absorption;
         }
         break;
+      case ELASTIC:
+        if (sens.sens_nuclide >= 0) {
+            if (p.neutron_xs_[sens.sens_nuclide].elastic == CACHE_INVALID)
+              data::nuclides[sens.sens_nuclide]->calculate_elastic_xs(p);
+            score = p.neutron_xs_[sens.sens_nuclide].elastic * atom_density;
+          } 
+        break;
       case SCORE_ABSORPTION: 
         if (sens.sens_nuclide >=0){
             macro_xs = p.neutron_xs_[sens.sens_nuclide].absorption * atom_density;
@@ -566,6 +573,9 @@ void score_collision_sensitivity(Particle& p)
         score = 0.0;
         break;
       case SCORE_SCATTER:
+        score = 1.0;
+        break;
+      case ELASTIC:
         score = 1.0;
         break;
       case SCORE_ABSORPTION: 
