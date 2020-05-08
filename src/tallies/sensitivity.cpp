@@ -456,7 +456,7 @@ score_track_sensitivity(Particle& p, double distance)
         if (sens.sens_nuclide >= 0) {
             if (p.neutron_xs_[sens.sens_nuclide].elastic == CACHE_INVALID)
               data::nuclides[sens.sens_nuclide]->calculate_elastic_xs(p);
-            score = p.neutron_xs_[sens.sens_nuclide].elastic * atom_density;
+            macro_xs = p.neutron_xs_[sens.sens_nuclide].elastic * atom_density;
           } 
         break;
       case SCORE_ABSORPTION: 
