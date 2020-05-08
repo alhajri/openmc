@@ -98,6 +98,8 @@ SensitivityTally::SensitivityTally(pugi::xml_node node)
   // By default, we tally just the total material rates.
   if (!check_for_node(node, "nuclides")) {
     nuclides_.push_back(-1);
+  } else {
+    this->set_nuclides(node);
   }
 
   // =======================================================================
@@ -105,14 +107,17 @@ SensitivityTally::SensitivityTally(pugi::xml_node node)
   // Sensitivity only allows nu-fission score
 
   // Reset state and prepare for the new scores.
+  if (!check_for_node(node, "scores")){
+    scores_.clear();
+    depletion_rx_ = false;
+    scores_.reserve(1);
 
-  scores_.clear();
-  depletion_rx_ = false;
-  scores_.reserve(1);
+    auto score = SCORE_NU_FISSION;
 
-  auto score = SCORE_NU_FISSION;
-
-  scores_.push_back(score);
+    scores_.push_back(score);
+  } else {
+    this->set_scores(node);
+  }
 
   // =======================================================================
   // READ DATA FOR SENSITIVITIES
@@ -576,6 +581,7 @@ void score_collision_sensitivity(Particle& p)
         score = 1.0;
         break;
       case ELASTIC:
+        if (p.event_mt_ != ELASTIC) continue;
         score = 1.0;
         break;
       case SCORE_ABSORPTION: 
