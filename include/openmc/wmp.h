@@ -68,6 +68,8 @@ public:
 
   std::pair<int, std::vector<double>> evaluate_pole_deriv_fission(double E, double sqrtkT);
 
+  std::pair<int, std::vector<double>> evaluate_pole_deriv_absorption(double E, double sqrtkT);
+
   std::pair<int, std::vector<double>> evaluate_fit_deriv_total(double E, double sqrtkT);
 
   std::pair<int, std::vector<double>> evaluate_fit_deriv_scatter(double E, double sqrtkT);

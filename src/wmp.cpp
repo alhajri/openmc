@@ -389,6 +389,65 @@ WindowedMultipole::evaluate_pole_deriv_fission(double E, double sqrtkT)
 }
 
 std::pair<int, std::vector<double>>
+WindowedMultipole::evaluate_pole_deriv_absorption(double E, double sqrtkT)
+{
+  using namespace std::complex_literals;
+
+  // ==========================================================================
+  // Bookkeeping
+
+  // Define some frequently used variables.
+  double sqrtE = std::sqrt(E);
+  double invE = 1.0 / E;
+
+  // Locate window containing energy
+  int i_window = (sqrtE - std::sqrt(E_min_)) / spacing_;
+  int startw = windows_(i_window, 0) - 1;
+  int endw = windows_(i_window, 1) - 1;
+
+  // Calculate size of vector and initialize
+  int size = 2*(endw - startw + 1)*data_.shape()[1];
+  std::vector<double> derivative(size, 0.0);
+  int vector_start = startw * 2 * data_.shape()[1];
+
+
+  // ==========================================================================
+  // Add the contribution from the poles in this window.
+
+  if (sqrtkT == 0.0) {
+    // If at 0K, use asymptotic form.
+    for (int i_pole = startw; i_pole <= endw; ++i_pole) {
+      int start_idx = (i_pole - startw) * 2 * data_.shape()[1];
+      std::complex<double> psi_chi = 1.0 / (data_(i_pole, MP_EA) - sqrtE);
+      std::complex<double> c_temp = psi_chi / E;
+      
+      derivative[start_idx]   = (-1.0 * data_(i_pole, MP_RA) * psi_chi * c_temp).imag();
+      derivative[start_idx+1] = (-1.0 * data_(i_pole, MP_RA) * psi_chi * c_temp).real();
+      derivative[start_idx+4] = (c_temp).imag();
+      derivative[start_idx+5] = (c_temp).real();
+    }
+  } else {
+    // At temperature, use Faddeeva function-based form.
+    double dopp = sqrt_awr_ / sqrtkT;
+    if (endw >= startw) {
+      for (int i_pole = startw; i_pole <= endw; ++i_pole) {
+        int start_idx = (i_pole - startw) * 2 * data_.shape()[1];
+        std::complex<double> z = (sqrtE - data_(i_pole, MP_EA)) * dopp;
+        std::complex<double> w_val = faddeeva(z) * dopp * invE * SQRT_PI;
+        std::complex<double> dw_val = w_derivative(z,1) * dopp * invE * SQRT_PI;
+        
+        derivative[start_idx]   = (-1.0 * data_(i_pole, MP_RA) * dopp * dw_val).real();
+        derivative[start_idx+1] = (-1.0i * data_(i_pole, MP_RA) * dopp * dw_val).real();
+        derivative[start_idx+4] = (w_val).real();
+        derivative[start_idx+5] = (1.0i * w_val).real();
+      }
+    }
+  }
+
+  return std::make_pair(vector_start, derivative);
+}
+
+std::pair<int, std::vector<double>>
 WindowedMultipole::evaluate_fit_deriv_total(double E, double sqrtkT)
 {
   using namespace std::complex_literals;

@@ -385,6 +385,24 @@ Tally::Tally(pugi::xml_node node)
     }
   }
 
+  // Check for the presence of certain filter types
+  int particle_filter_index = C_NONE;
+  for (gsl::index j = 0; j < filters_.size(); ++j) {
+    int i_filter = filters_[j];
+    const auto& f = model::tally_filters[i_filter].get();
+
+    auto pf = dynamic_cast<ParticleFilter*>(f);
+    if (pf) particle_filter_index = i_filter;
+
+    // set the score of the filter to the score of tally
+    std::string filt_type = f->type();
+    if (filt_type == "derivative" ) {
+      f->set_score(scores_);
+    } 
+  }
+
+
+
   // Check for a tally derivative.
   if (check_for_node(node, "derivative")) {
     int deriv_id = std::stoi(get_node_value(node, "derivative"));
