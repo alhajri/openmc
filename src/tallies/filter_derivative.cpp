@@ -66,6 +66,7 @@ const
   std::pair<int, std::vector<double>> derivative;
 
   // Get the correct cross section
+  // !!!This implementation is assuming only one score and nuclide!!!
   switch (score_[0]) {
   case SCORE_TOTAL:
     sigma = sig_s + sig_a;
