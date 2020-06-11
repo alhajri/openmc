@@ -397,7 +397,7 @@ Tally::Tally(pugi::xml_node node)
     // set the score of the filter to the score of tally
     std::string filt_type = f->type();
     if (filt_type == "derivative" ) {
-      f->set_score(scores_);
+      f->set_scores(scores_);
     } 
   }
 
