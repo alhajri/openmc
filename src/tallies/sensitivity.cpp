@@ -604,7 +604,7 @@ void score_collision_sensitivity(Particle& p)
     case SensitivityVariable::MULTIPOLE:
     {
       // check if in resonance range
-      const auto& nuc {*data::nuclides[i]};
+      const auto& nuc {*data::nuclides[sens.sens_nuclide]};
       if (multipole_in_range(nuc, p.E_last_)){
         // Calculate derivative of the scattering cross section at p->E_last_
         const auto& micro_xs {p.neutron_xs_[i]};
@@ -626,7 +626,7 @@ void score_collision_sensitivity(Particle& p)
     case SensitivityVariable::CURVE_FIT:
     {
       // check if in resonance range
-      const auto& nuc {*data::nuclides[i]};
+      const auto& nuc {*data::nuclides[sens.sens_nuclide]};
       if (multipole_in_range(nuc, p.E_last_)){
         // Calculate derivative of the scattering cross section at p->E_last_
         const auto& micro_xs {p.neutron_xs_[i]};
