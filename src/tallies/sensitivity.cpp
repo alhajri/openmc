@@ -607,7 +607,7 @@ void score_collision_sensitivity(Particle& p)
       const auto& nuc {*data::nuclides[sens.sens_nuclide]};
       if (multipole_in_range(nuc, p.E_last_)){
         // Calculate derivative of the scattering cross section at p->E_last_
-        const auto& micro_xs {p.neutron_xs_[i]};
+        const auto& micro_xs {p.neutron_xs_[sens.sens_nuclide]};
         auto derivative = nuc.multipole_->evaluate_pole_deriv_scatter(p.E_last_, p.sqrtkT_);
 
         // sum/bin 1/micro_sigma_scatter * derivative
@@ -629,7 +629,7 @@ void score_collision_sensitivity(Particle& p)
       const auto& nuc {*data::nuclides[sens.sens_nuclide]};
       if (multipole_in_range(nuc, p.E_last_)){
         // Calculate derivative of the scattering cross section at p->E_last_
-        const auto& micro_xs {p.neutron_xs_[i]};
+        const auto& micro_xs {p.neutron_xs_[sens.sens_nuclide]};
         auto derivative = nuc.multipole_->evaluate_fit_deriv_scatter(p.E_last_, p.sqrtkT_);
 
         // sum/bin 1/micro_sigma_scatter * derivative
