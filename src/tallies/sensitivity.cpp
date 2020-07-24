@@ -269,7 +269,7 @@ void SensitivityTally::accumulate()
     // Account for number of source particles in normalization
     if (gpt_) {
       double norm = total_source / (settings::n_particles * settings::gen_per_batch);
-      denominator_ = norm;
+      denominator_ = 1.0 / norm;
     }
 
     // Accumulate each result
